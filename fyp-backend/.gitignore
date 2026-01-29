@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual env
+.venv/
+.idea/
+# Local secrets
+.env
+.env.*
+
+# Model / large artifacts (DON'T commit)
+models/
+*.pt
+*.safetensors
+*.bin
+
+# Logs
+*.log
