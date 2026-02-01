@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { submitPHQ } from "../api/backend";
 
 /**
  * PHQPage Component - PHQ-8 Questionnaire
@@ -62,6 +63,8 @@ const RESPONSE_OPTIONS = [
 
 export default function PHQPage() {
   const navigate = useNavigate();
+  const currentUserId = "USER_001";
+
   
   // Initialize state: { questionId: score }
   const [responses, setResponses] = useState({});
@@ -100,9 +103,7 @@ export default function PHQPage() {
    * - 15-19: Moderately severe symptoms
    * - 20-24: Severe symptoms
    */
-  const calculateTotalScore = () => {
-    return Object.values(responses).reduce((sum, score) => sum + score, 0);
-  };
+ 
 
   /**
    * Handle form submission
@@ -111,40 +112,28 @@ export default function PHQPage() {
    * - Save to localStorage
    * - Navigate to EMA page
    */
-  const handleSubmit = (e) => {
-    e.preventDefault();
+const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    // Validation: ensure all questions answered
-    if (!isFormComplete) {
-      setSubmitted(true);
-      window.scrollTo(0, 0);
-      return;
-    }
+  if (!isFormComplete) {
+    setSubmitted(true);
+    window.scrollTo(0, 0);
+    return;
+  }
 
-    // Calculate total score
-    const totalScore = calculateTotalScore();
+  try {
+  await submitPHQ({
+    user_id: currentUserId,
+    study_day: 0,
+    responses: responses
+  });
 
-    // Get existing study data from localStorage
-    const studyData = JSON.parse(localStorage.getItem('studyData')) || {};
+  navigate('/ema');
+} catch (err) {
+  alert("Submission failed. Please try again.");
+}
 
-    // Prepare PHQ-8 response object with metadata
-    const phq8Response = {
-      responses: responses, // Individual question responses
-      totalScore: totalScore, // Total PHQ-8 score
-      day: 0, // Day 0 (baseline) - will be day 14 for follow-up
-      submittedAt: new Date().toISOString(), // Timestamp for audit trail
-    };
-
-    // Save PHQ-8 data to localStorage
-    studyData.phq8 = phq8Response;
-    localStorage.setItem('studyData', JSON.stringify(studyData));
-
-    // Log for debugging (remove in production)
-    console.log("PHQ-8 Submitted:", phq8Response);
-
-    // Navigate to EMA (Daily assessment) page
-    navigate('/ema');
-  };
+};
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">

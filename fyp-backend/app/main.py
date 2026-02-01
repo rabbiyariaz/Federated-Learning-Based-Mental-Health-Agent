@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from ml.services.inference_service import InferenceService
+from ml.inference.inference_engine import InferenceService
 from app.routers import ema, phq, report
 
 
