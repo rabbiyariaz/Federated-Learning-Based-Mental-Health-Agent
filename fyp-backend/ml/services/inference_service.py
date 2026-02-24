@@ -13,13 +13,23 @@ class InferenceService:
         for model in self.models.values():
             model.load()
 
-    def run(self, text: str) -> dict:
-        emotion = self.models["emotion"].predict(text)
-        phq = self.models["phq"].predict(text)
+    # def run(self, text: str) -> dict:
+    #     emotion = self.models["emotion"].predict(text)
+    #     phq = self.models["phq"].predict(text)
 
-        return {
-            "emotion": emotion["emotion"],
-            "emotion_probs": emotion["emotion_probs"],
-            "phq8_score": phq["phq8_score"],
-            "phq8_binary": phq["phq8_binary"],
+    #     return {
+    #         "emotion": emotion["emotion"],
+    #         "emotion_probs": emotion["emotion_probs"],
+    #         "phq8_score": phq["phq8_score"],
+    #         "phq8_binary": phq["phq8_binary"],
+    #     }
+
+    def run(self, text: str) -> dict:
+         emotion = self.models["emotion"].predict(text)
+         phq = self.models["phq"].predict(text)
+
+         return {
+               "emotion": emotion["emotion"],
+               "emotion_probs": emotion["emotion_probs"],
+               "phq": phq,   # ✅ return full DAIC output (score, prob, utterance_count)
         }

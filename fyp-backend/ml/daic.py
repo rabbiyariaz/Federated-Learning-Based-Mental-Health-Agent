@@ -92,9 +92,15 @@ def load_daic():
     if not ModelConfig.DAIC_CHECKPOINT.exists():  # ✅
         raise FileNotFoundError(f"DAIC checkpoint not found: {ModelConfig.DAIC_CHECKPOINT}")
 
-    if not ModelConfig.DAIC_TOKENIZER_DIR.exists():  # ✅
-        raise FileNotFoundError(f"Tokenizer directory not found: {ModelConfig.DAIC_TOKENIZER_DIR}")
+    tok_src = ModelConfig.DAIC_TOKENIZER_DIR
 
+    # Only check exists() if it's a local Path
+    if hasattr(tok_src, "exists") and not tok_src.exists():
+        raise FileNotFoundError(f"Tokenizer directory not found: {tok_src}")
+
+    
+    print(" DAIC_CHECKPOINT =", ModelConfig.DAIC_CHECKPOINT)
+    print(" DAIC_TOKENIZER_DIR =", ModelConfig.DAIC_TOKENIZER_DIR)
     tok = AutoTokenizer.from_pretrained(str(ModelConfig.DAIC_TOKENIZER_DIR))  # ✅
     model = DistilBertMultiTaskWithAggregator(encoder_ckpt=str(ModelConfig.DAIC_TOKENIZER_DIR))  # ✅
 
@@ -132,7 +138,10 @@ def predict_phq(text: str):
         seq = pooled.unsqueeze(0)
         lengths = [pooled.size(0)]
         phq_reg, phq_bin_logit = model.forward_session(seq, lengths)
-
+        #start
+        print("DEBUG phq_reg_raw =", float(phq_reg.cpu().item()))
+        print("DEBUG phq_bin_logit =", float(phq_bin_logit.cpu().item()))
+        #end
         score = float(phq_reg.cpu().item())
         score = max(ModelConfig.PHQ8_MIN_SCORE, min(ModelConfig.PHQ8_MAX_SCORE, score))  # ✅
         prob = float(torch.sigmoid(phq_bin_logit).cpu().item())

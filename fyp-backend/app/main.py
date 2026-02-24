@@ -1,3 +1,4 @@
+from app.routers import chat
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -35,7 +36,7 @@ def predict(req: PredictRequest):
     text = req.text.strip()
     return service.run(text)
 
-
+app.include_router(chat.router)
 app.include_router(ema.router)
 app.include_router(phq.router)
 app.include_router(report.router)

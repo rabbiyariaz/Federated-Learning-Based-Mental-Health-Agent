@@ -12,7 +12,8 @@ class ModelConfig:
     # ===== DAIC (PHQ-8) Model =====
     DAIC_MODEL_NAME = "daic_phq8"
     DAIC_CHECKPOINT = MODELS_DIR / "daic_multitask_results" / "multitask_with_aggr_best.pt"
-    DAIC_TOKENIZER_DIR = MODELS_DIR / "emotion" / "goemotions"
+    DAIC_TOKENIZER_DIR = "distilbert-base-uncased"
+
 
     # DAIC Model Hyperparameters
     DAIC_MAX_SEQ_LEN = 128
@@ -20,7 +21,7 @@ class ModelConfig:
     DAIC_AGGR_HIDDEN = 256
     DAIC_AGGR_LAYERS = 1
     DAIC_AGGR_DROPOUT = 0.2
-    DAIC_PHQ_BIN_THRESHOLD = 0.5
+    DAIC_PHQ_BIN_THRESHOLD = 0.35
     DAIC_MAX_UTTERANCES = 40
 
     # PHQ-8 Score Range
