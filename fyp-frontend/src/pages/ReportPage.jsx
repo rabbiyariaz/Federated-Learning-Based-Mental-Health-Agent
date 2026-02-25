@@ -1,72 +1,74 @@
 import { useState, useEffect } from 'react';
 import { getPHQSeverityLabel } from '../utils/scoring';
+import { fetchReport, getOrCreateSessionId } from "../api/backend";
 
-/**
- * ReportPage Component - Automated Report Generation
- * 
- * Purpose: Generate summary report of PHQ-8 and EMA data
- * - Shows baseline and endpoint PHQ-8 scores
- * - Displays EMA completion statistics
- * - Simulates PDF report generation
- * 
- * Academic Context: FYP - Depression Symptom Monitoring System
- * Report generation demonstrates automated symptom summary for clinical review
- */
 
 export default function ReportPage() {
-  const [studyData, setStudyData] = useState(null);
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [reportGenerated, setReportGenerated] = useState(false);
+  const [error, setError] = useState(null);
 
-  /**
-   * Load data from localStorage on mount
-   */
+  // Extract baseline and follow-up from report
+  const baseline = report?.phq?.find((p) => p.studyDay === 0)?.totalScore ?? null;
+  const followUp = report?.phq?.find((p) => p.studyDay === 14)?.totalScore ?? null;
+  const completed = report?.ema_days_completed ?? 0;
+  const total = report?.study_duration_days ?? 14;
+  const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+
   useEffect(() => {
-    const data = JSON.parse(localStorage.getItem('studyData')) || {};
-    setStudyData(data);
+    const controller = new AbortController();
+    let isMounted = true;
+
+    async function loadReport() {
+      try {
+        const userId = await getOrCreateSessionId();
+        const data = await fetchReport(userId, controller.signal);
+
+        if (isMounted) {
+          setReport(data);
+        }
+      } catch (err) {
+        if (err.name !== "AbortError" && isMounted) {
+          setError("Could not load report");
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadReport();
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, []);
 
-  /**
-   * Calculate EMA completion statistics
-   */
-  const getEMAStats = () => {
-    const emaEntries = studyData?.emaEntries || [];
-    const uniqueDays = new Set(emaEntries.map((entry) => entry.studyDay));
-    const completed = uniqueDays.size;
-    const total = 14;
-    const percentage = Math.round((completed / total) * 100);
-
-    return { completed, total, percentage };
-  };
-
-  /**
-   * Get PHQ-8 scores
-   */
-  const getPHQScores = () => {
-    const baseline = studyData?.phq8?.totalScore || null;
-    const followUp = studyData?.phq14?.totalScore || null;
-
-    return { baseline, followUp };
-  };
-
-  /**
-   * Simulate report generation
-   * In production, this would call a backend API to generate PDF
-   */
   const handleGenerateReport = async () => {
+    if (!report) return;
+
     setGenerating(true);
     setReportGenerated(false);
 
-    // Simulate API call delay
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Generate report summary text
-    const { baseline, followUp } = getPHQScores();
-    const { completed, total, percentage } = getEMAStats();
-    const consentData = JSON.parse(localStorage.getItem('userConsent')) || {};
+    const percentage =
+      total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    const consentData =
+      JSON.parse(localStorage.getItem('userConsent')) || {};
+
     const consentDate = consentData.consentDate
       ? new Date(consentData.consentDate).toLocaleDateString()
       : 'N/A';
+
+    const changeFromBaseline =
+      baseline !== null && followUp !== null
+        ? followUp - baseline
+        : null;
 
     const reportContent = `
 DEPRESSION SYMPTOM MONITORING STUDY
@@ -79,34 +81,46 @@ BASELINE ASSESSMENT (PHQ-8)
 ---------------------------
 Day 0 Total Score: ${baseline !== null ? baseline : 'Not completed'}
 ${baseline !== null ? `Severity Category: ${getPHQSeverityLabel(baseline)}` : ''}
-${baseline !== null ? 'Score Range: 0-24 (monitoring only, not diagnostic)' : ''}
 
 FOLLOW-UP ASSESSMENT (PHQ-8)
 -----------------------------
 Day 14 Total Score: ${followUp !== null ? followUp : 'Not yet completed'}
 ${followUp !== null ? `Severity Category: ${getPHQSeverityLabel(followUp)}` : ''}
-${followUp !== null ? `Change from Baseline: ${followUp - baseline >= 0 ? '+' : ''}${followUp - baseline}` : ''}
+${changeFromBaseline !== null
+  ? `Change from Baseline: ${changeFromBaseline >= 0 ? '+' : ''}${changeFromBaseline}`
+  : ''
+}
 
 DAILY ASSESSMENTS (EMA)
 ------------------------
 Days Completed: ${completed} / ${total}
 Completion Rate: ${percentage}%
-${completed === total ? '✓ All daily assessments completed' : `⚠ ${total - completed} days remaining`}
+${completed === total
+  ? '✓ All daily assessments completed'
+  : `⚠ ${total - completed} days remaining`
+}
 
 SUMMARY
 --------
-This report provides a summary of symptom monitoring data collected over a 14-day period. 
-Data is for monitoring purposes only and does not constitute a clinical diagnosis.
+This report summarizes symptom monitoring data collected over 14 days.
+This is for monitoring purposes only and not a clinical diagnosis.
+WEEKLY EMA SUMMARY
+-------------------
+Average Depression Index: ${report?.ema_summary?.weekly_avg_depression ?? 'N/A'}
+Depression Trend: ${report?.ema_summary?.trend_depression ?? 'N/A'}
+Average Sleep Quality: ${report?.ema_summary?.weekly_avg_sleep ?? 'N/A'}
+Sleep Trend: ${report?.ema_summary?.trend_sleep ?? 'N/A'}
 
-For interpretation and clinical decisions, consult a qualified healthcare professional.
+Clinical Interpretation:
+${report?.ema_summary?.clinical_interpretation ?? 'No EMA summary available.'}
 
 Report Generated: ${new Date().toLocaleString()}
 =====================================
     `.trim();
 
-    // Create a Blob and trigger download
     const blob = new Blob([reportContent], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
+
     const link = document.createElement('a');
     link.href = url;
     link.download = `symptom-monitoring-report-${Date.now()}.txt`;
@@ -119,9 +133,27 @@ Report Generated: ${new Date().toLocaleString()}
     setReportGenerated(true);
   };
 
-  const { baseline, followUp } = getPHQScores();
-  const { completed, total, percentage } = getEMAStats();
+  /* ---------- RENDER ---------- */
 
+  if (loading) {
+    return <p className="text-center mt-10">Loading report…</p>;
+  }
+
+  if (error) {
+    return (
+      <p className="text-center mt-10 text-red-600">
+        {error}
+      </p>
+    );
+  }
+
+  if (!report) {
+    return (
+      <p className="text-center mt-10 text-red-600">
+        Report unavailable.
+      </p>
+    );
+  }
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-4xl mx-auto">
@@ -193,6 +225,31 @@ Report Generated: ${new Date().toLocaleString()}
           </div>
         </div>
 
+{report?.ema_summary && (
+  <div style={{ marginTop: "20px" }}>
+    <h3>Weekly EMA Summary</h3>
+    <p>
+      <strong>Average Depression Index:</strong>{" "}
+      {report.ema_summary.weekly_avg_depression}
+    </p>
+    <p>
+      <strong>Depression Trend:</strong>{" "}
+      {report.ema_summary.trend_depression}
+    </p>
+    <p>
+      <strong>Average Sleep:</strong>{" "}
+      {report.ema_summary.weekly_avg_sleep}
+    </p>
+    <p>
+      <strong>Sleep Trend:</strong>{" "}
+      {report.ema_summary.trend_sleep}
+    </p>
+    <p>
+      <strong>Clinical Interpretation:</strong>{" "}
+      {report.ema_summary.clinical_interpretation}
+    </p>
+  </div>
+)}
         {/* Report Details */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getOrCreateSessionId, submitEMA } from "../api/backend";
 
 /**
  * EMAPage Component - Daily Ecological Momentary Assessment
@@ -130,40 +131,43 @@ export default function EMAPage() {
    * Calculate current study day (1-14)
    * Based on days elapsed since consent
    */
-  const calculateStudyDay = () => {
-    const studyData = JSON.parse(localStorage.getItem('studyData')) || {};
-    const consentData = JSON.parse(localStorage.getItem('userConsent')) || {};
 
-    if (!consentData.consentDate) return 1;
+  const normalizeToMidnight = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
 
-    const consentDate = new Date(consentData.consentDate);
-    const today = new Date();
 
-    // Calculate days between consent and today
-    const daysDifference = Math.floor(
-      (today - consentDate) / (1000 * 60 * 60 * 24)
-    );
+const calculateStudyDay = () => {
+  const consentData = JSON.parse(localStorage.getItem('userConsent')) || {};
+  if (!consentData.consentDate) return 1;
 
-    // Study days are 0-13 mapped to display 1-14
-    return Math.min(daysDifference + 1, 14);
-  };
+  const consentDate = normalizeToMidnight(consentData.consentDate);
+  const today = normalizeToMidnight(new Date());
+
+  const daysDifference =
+    (today - consentDate) / (1000 * 60 * 60 * 24);
+
+  return Math.min(daysDifference + 1, 14);
+};
+
 
   /**
    * Validate all questions answered
    * All questions must have a value (including composite Q5)
    */
   const isFormComplete = () => {
-    const sliderCount = EMA_QUESTIONS.filter(q => q.type === 'slider').length;
-    const sliderAnswered = Object.keys(responses).filter(key => key !== '5').length;
-    
-    // Check if all slider questions are answered (excluding Q5)
-    if (sliderAnswered !== sliderCount) return false;
-    
-    // Check if Q5 radio and severity are both answered
-    if (!compositeResponse || !responses[5]) return false;
-    
-    return true;
-  };
+  for (const q of EMA_QUESTIONS) {
+    if (q.type === 'slider' && responses[q.id] === undefined) return false;
+
+    if (q.type === 'composite') {
+      if (!compositeResponse || !responses[q.id]) return false;
+    }
+  }
+  return true;
+};
+
 
   /**
    * Handle form submission
@@ -171,42 +175,66 @@ export default function EMAPage() {
    * - Save to localStorage with metadata
    * - Navigate to dashboard
    */
-  const handleSubmit = (e) => {
-    e.preventDefault();
 
-    if (!isFormComplete() || alreadySubmittedToday) return;
 
-    // Calculate which day of the study this is (1-14)
-    const studyDay = calculateStudyDay();
+  const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    // Get existing study data
-    const studyData = JSON.parse(localStorage.getItem('studyData')) || {};
-    const emaEntries = studyData.emaEntries || [];
+  if (!isFormComplete() || alreadySubmittedToday) return;
 
-    // Prepare EMA entry with metadata
-    const emaEntry = {
-      responses: responses, // Question responses: { 1: 3, 2: 4, ... }
-      compositeResponse: compositeResponse, // Q5 radio button selection
-      studyDay: studyDay, // Day 1-14
-      dateSubmitted: todayDate, // Human-readable date
-      submittedAt: new Date().toISOString(), // ISO timestamp for audit trail
-    };
+  let sessionId;
 
-    // Add to array of EMA entries
-    emaEntries.push(emaEntry);
-    studyData.emaEntries = emaEntries;
+  try {
+    sessionId = await getOrCreateSessionId();   // ✅ Single source of truth
+  } catch (err) {
+    alert("Could not create a session. Please try again.");
+    return;
+  }
 
-    // Save back to localStorage
-    localStorage.setItem('studyData', JSON.stringify(studyData));
+  const todayISODate = new Date().toISOString().split("T")[0];
 
-    // Log for debugging (remove in production)
-    console.log("EMA Submitted:", emaEntry);
-
-    // Navigate to dashboard
-    navigate('/dashboard');
+  const payload = {
+    user_id: sessionId,   // ✅ Always use fresh sessionId
+    date_submitted: todayISODate,
+    responses: {
+      "1": responses[1],
+      "2": responses[2],
+      "3": responses[3],
+      "4": responses[4],
+      "5_severity": responses[5],
+      "5_type": compositeResponse,
+      "6": responses[6],
+    }
   };
 
+  try {
+    await submitEMA(payload);
+    navigate('/dashboard');
+  } catch (err) {
+    if (err.response?.status === 400) {
+      alert(err.response.data.detail);
+    } else {
+      alert("Failed to submit EMA. Please try again.");
+    }
+  }
+};
+
+
   const studyDay = calculateStudyDay();
+  const completedCount = EMA_QUESTIONS.reduce((count, q) => {
+  if (q.type === "slider") {
+    return responses[q.id] !== undefined ? count + 1 : count;
+  }
+
+  if (q.type === "composite") {
+    return compositeResponse && responses[q.id] !== undefined
+      ? count + 1
+      : count;
+  }
+
+  return count;
+}, 0);
+
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
@@ -373,7 +401,7 @@ export default function EMAPage() {
           {/* Progress Indicator */}
           <div className="mt-4 text-center text-xs text-gray-600">
             <p>
-              Progress: <span className="font-semibold">{Object.keys(responses).length}/{EMA_QUESTIONS.length} questions</span>
+              Progress: <span className="font-semibold">{completedCount}/{EMA_QUESTIONS.length} questions</span>
               {compositeResponse && " • Type selected"}
             </p>
           </div>

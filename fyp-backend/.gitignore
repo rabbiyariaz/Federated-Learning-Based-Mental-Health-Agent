@@ -18,3 +18,8 @@ models/
 
 # Logs
 *.log
+
+# Database
+*.db
+*.db-shm
+*.db-wal

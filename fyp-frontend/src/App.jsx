@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './layout/MainLayout';
 import PHQPage from './pages/PHQPage';
@@ -10,7 +9,9 @@ import ScreeningPage from './pages/ScreeningPage';
 import ChatPage from './pages/ChatPage';
 import HistoryPage from './pages/HistoryPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
-import { checkHealth } from "./api/backend";
+import { checkHealth, getOrCreateSessionId } from "./api/backend";
+import { useEffect, useRef } from "react";
+
 
 /**
  * ProtectedRoute Component
@@ -27,13 +28,25 @@ function ProtectedRoute({ element }) {
   return element;
 }
 
+
 function App() {
+  const hasInitialized = useRef(false);
+
   useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+
+    getOrCreateSessionId()
+      .then((sessionId) => {
+        console.log("Anonymous session:", sessionId);
+      })
+      .catch((err) => console.error("Session creation error:", err));
+
     checkHealth()
       .then((data) => console.log("Backend health:", data))
       .catch((err) => console.error("Backend health error:", err));
-  }, []);
 
+  }, []);
   return (
     <BrowserRouter>
       <Routes>

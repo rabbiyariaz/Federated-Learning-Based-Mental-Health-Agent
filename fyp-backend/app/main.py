@@ -2,7 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from ml.inference.inference_engine import InferenceService
-from app.routers import ema, phq, report
+from app.routers import ema, phq, report, study, session
+
+
+
 
 
 app = FastAPI()
@@ -39,3 +42,7 @@ def predict(req: PredictRequest):
 app.include_router(ema.router)
 app.include_router(phq.router)
 app.include_router(report.router)
+app.include_router(study.router)
+app.include_router(session.router)
+
+

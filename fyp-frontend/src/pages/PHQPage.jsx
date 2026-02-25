@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { submitPHQ } from "../api/backend";
+import { getOrCreateSessionId, submitPHQ } from "../api/backend";
 
 /**
  * PHQPage Component - PHQ-8 Questionnaire
@@ -63,7 +63,6 @@ const RESPONSE_OPTIONS = [
 
 export default function PHQPage() {
   const navigate = useNavigate();
-  const currentUserId = "USER_001";
 
   
   // Initialize state: { questionId: score }
@@ -122,8 +121,10 @@ const handleSubmit = async (e) => {
   }
 
   try {
+  const sessionId = await getOrCreateSessionId();
+
   await submitPHQ({
-    user_id: currentUserId,
+    user_id: sessionId,
     study_day: 0,
     responses: responses
   });
