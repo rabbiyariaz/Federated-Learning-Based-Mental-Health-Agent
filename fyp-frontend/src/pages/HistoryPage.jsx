@@ -65,7 +65,7 @@ function HistoryPage() {
       {/* Header */}
       <div className="mb-8 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-teal-400 mb-2">History</h1>
+          <h1 className="text-3xl font-bold text-emerald-700 mb-2">History</h1>
           <p className="text-slate-300">
             View your past screenings and chat sessions
           </p>
@@ -82,13 +82,13 @@ function HistoryPage() {
 
       {/* Filter Tabs */}
       {entries.length > 0 && (
-        <div className="flex gap-2 mb-6 border-b border-slate-700">
+        <div className="flex gap-2 mb-6 border-b border-gray-200">
           <button
             onClick={() => setFilter('all')}
             className={`px-4 py-2 font-medium transition-colors ${
               filter === 'all'
-                ? 'text-teal-400 border-b-2 border-teal-400'
-                : 'text-slate-400 hover:text-slate-300'
+                ? 'text-emerald-600 border-b-2 border-emerald-600'
+                : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             All ({entries.length})
@@ -97,8 +97,8 @@ function HistoryPage() {
             onClick={() => setFilter('screening')}
             className={`px-4 py-2 font-medium transition-colors ${
               filter === 'screening'
-                ? 'text-teal-400 border-b-2 border-teal-400'
-                : 'text-slate-400 hover:text-slate-300'
+                ? 'text-emerald-600 border-b-2 border-emerald-600'
+                : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             Screening ({entries.filter(e => e.type === 'screening').length})
@@ -107,8 +107,8 @@ function HistoryPage() {
             onClick={() => setFilter('chat')}
             className={`px-4 py-2 font-medium transition-colors ${
               filter === 'chat'
-                ? 'text-teal-400 border-b-2 border-teal-400'
-                : 'text-slate-400 hover:text-slate-300'
+                ? 'text-emerald-600 border-b-2 border-emerald-600'
+                : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             Chat ({entries.filter(e => e.type === 'chat').length})
@@ -151,8 +151,8 @@ function HistoryPage() {
                     <span
                       className={`px-3 py-1 rounded-full text-xs font-semibold ${
                         entry.type === 'screening'
-                          ? 'bg-teal-600/20 text-teal-300 border border-teal-600/50'
-                          : 'bg-blue-600/20 text-blue-300 border border-blue-600/50'
+                          ? 'bg-emerald-600/20 text-emerald-700 border border-emerald-600/50'
+                          : 'bg-blue-600/20 text-blue-700 border border-blue-600/50'
                       }`}
                     >
                       {entry.type === 'screening' ? 'Screening' : 'Chat'}
@@ -238,7 +238,7 @@ function HistoryPage() {
                 {entry.type === 'screening' ? (
                   <div className="space-y-4">
                     <div>
-                      <h3 className="text-sm font-semibold text-teal-300 mb-2">
+                      <h3 className="text-sm font-semibold text-emerald-400 mb-2">
                         Full Text
                       </h3>
                       <p className="text-slate-300 bg-slate-800 rounded p-3 whitespace-pre-wrap">
@@ -247,7 +247,7 @@ function HistoryPage() {
                     </div>
 
                     <div>
-                      <h3 className="text-sm font-semibold text-teal-300 mb-2">
+                      <h3 className="text-sm font-semibold text-emerald-400 mb-2">
                         Analysis Results
                       </h3>
                       <div className="bg-slate-800 rounded p-4 space-y-3">
@@ -259,7 +259,7 @@ function HistoryPage() {
                             {entry.data.emotions?.map((emotion, idx) => (
                               <span
                                 key={idx}
-                                className="px-3 py-1 bg-teal-600/20 text-teal-300 rounded-full text-sm border border-teal-600/50"
+                                className="px-3 py-1 bg-emerald-600/20 text-emerald-400 rounded-full text-sm border border-emerald-600/50"
                               >
                                 {emotion.charAt(0).toUpperCase() +
                                   emotion.slice(1)}
@@ -319,7 +319,7 @@ function HistoryPage() {
                   </div>
                 ) : (
                   <div>
-                    <h3 className="text-sm font-semibold text-teal-300 mb-3">
+                    <h3 className="text-sm font-semibold text-emerald-700 mb-3">
                       Chat Messages ({entry.data.messageCount || 0} total)
                     </h3>
                     <div className="bg-slate-800 rounded-lg p-4 max-h-96 overflow-y-auto space-y-3">

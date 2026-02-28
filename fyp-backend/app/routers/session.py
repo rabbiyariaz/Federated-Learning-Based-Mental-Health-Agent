@@ -4,11 +4,13 @@ from app.database import get_db
 from app import models, schemas
 from datetime import datetime
 import uuid
+from app.auth import create_access_token
+
 
 router = APIRouter(prefix="/api/sessions", tags=["Sessions"])
 
 
-@router.post("/create", response_model=schemas.SessionResponse)
+@router.post("/create", response_model=schemas.TokenResponse)
 async def create_session(db: Session = Depends(get_db)):
     """Create a new anonymous participant identity"""
 
@@ -22,18 +24,11 @@ async def create_session(db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_session)
 
-    return db_session
+
+    token = create_access_token(data={"session_id": session_id})
+    return {
+    "access_token": token,
+    "token_type": "bearer"
+}
 
 
-@router.get("/validate/{session_id}")
-async def validate_session(session_id: str, db: Session = Depends(get_db)):
-    """Check if session exists"""
-
-    db_session = db.query(models.Session).filter(
-        models.Session.session_id == session_id
-    ).first()
-
-    if not db_session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    return {"valid": True}

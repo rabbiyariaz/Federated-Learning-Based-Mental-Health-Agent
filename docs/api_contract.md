@@ -38,14 +38,13 @@ implementation details (e.g., FastAPI, database choice).
 
 ### PHQAssessment
 - user_id
-- day (0 or 14)
+- day (0)
 - responses (q1–q8)
 - total_score
 - timestamp
 
 ### EMAEntry
-- user_id
-- study_day (1–14)
+- user_id 
 - responses (q1–q6)
 - timestamp
 
@@ -83,7 +82,6 @@ Stores a daily EMA entry.
 ```json
 {
   "user_id": "U001",
-  "study_day": 5,
   "responses": {
     "1": 3,
     "2": 2,

@@ -5,11 +5,13 @@ import EMAPage from './pages/EMAPage';
 import DashboardPage from './pages/DashboardPage';
 import ReportPage from './pages/ReportPage';
 import HomePage from './pages/HomePage';
+import GuidePage from './pages/GuidePage';
+import ProgressPage from './pages/ProgressPage';
 import ScreeningPage from './pages/ScreeningPage';
 import ChatPage from './pages/ChatPage';
 import HistoryPage from './pages/HistoryPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
-import { checkHealth, getOrCreateSessionId } from "./api/backend";
+import { checkHealth, getOrCreateToken } from "./api/backend";
 import { useEffect, useRef } from "react";
 
 
@@ -36,11 +38,11 @@ function App() {
     if (hasInitialized.current) return;
     hasInitialized.current = true;
 
-    getOrCreateSessionId()
-      .then((sessionId) => {
-        console.log("Anonymous session:", sessionId);
+    getOrCreateToken()
+      .then((token) => {
+        console.log("Anonymous token:", token);
       })
-      .catch((err) => console.error("Session creation error:", err));
+      .catch((err) => console.error("Token creation error:", err));
 
     checkHealth()
       .then((data) => console.log("Backend health:", data))
@@ -52,6 +54,8 @@ function App() {
       <Routes>
         <Route path="/" element={<MainLayout />}>
           <Route index element={<HomePage />} />
+          <Route path="guide" element={<GuidePage />} />
+          <Route path="progress" element={<ProgressPage />} />
           <Route path="screening" element={<ScreeningPage />} />
           <Route path="phq" element={<PHQPage />} />
           <Route path="ema" element={<EMAPage />} />

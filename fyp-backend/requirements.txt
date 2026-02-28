@@ -5,3 +5,4 @@ sqlalchemy
 transformers
 torch
 pytest
+python-jose

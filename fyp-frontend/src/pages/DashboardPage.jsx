@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchDashboardSummary, getOrCreateSessionId } from "../api/backend";
+import { fetchDashboardSummary, getOrCreateToken } from "../api/backend";
+
 
 import {
   Chart as ChartJS,
@@ -38,8 +39,8 @@ export default function DashboardPage() {
 
     async function loadDashboard() {
       try {
-        const userId = await getOrCreateSessionId();
-        const data = await fetchDashboardSummary(userId);
+        const token = await getOrCreateToken();
+        const data = await fetchDashboardSummary(token);
 
         if (isMounted) {
           setStudy(data);
@@ -61,31 +62,38 @@ export default function DashboardPage() {
     };
   }, []);
 
-const { ema = [], phq = [], studyDuration = 14 } = study || {};
+const { ema = [], phq = [], ema_summary = {} } = study || {};
+const formatDate = (d) => new Date(d).toLocaleDateString();
 
  
 
 
   /* ---------------- GENERIC LINE CHART BUILDER ---------------- */
 
-  const buildLineChart = ({ question, label, color }) => {
-    if (!ema.length) return null;
+const buildLineChart = ({ question, label, color }) => {
+  if (!ema.length) return null;
 
-    const sorted = [...ema].sort((a, b) => a.studyDay - b.studyDay);
+  const getDate = (entry) => entry.date || entry.submittedAt;
 
-    return {
-      labels: sorted.map(e => `Day ${e.studyDay}`),
-      datasets: [
-        {
-          label,
-          data: sorted.map(e => e.responses?.[question] ?? null),
-          borderColor: color,
-          backgroundColor: color.replace("rgb", "rgba").replace(")", ",0.4)"),
-          tension: 0.3,
-        },
-      ],
-    };
+  const sorted = [...ema].sort(
+    (a, b) => new Date(getDate(a)) - new Date(getDate(b))
+  );
+
+  const recent = sorted.slice(-7); // limit to last 7 entries
+
+  return {
+    labels: recent.map(e => formatDate(getDate(e))),
+    datasets: [
+      {
+        label,
+        data: recent.map(e => e.responses?.[question] ?? null),
+        borderColor: color,
+        backgroundColor: color.replace("rgb", "rgba").replace(")", ",0.4)"),
+        tension: 0.3,
+      },
+    ],
   };
+};
 
   /* ---------------- MEMOIZED CHART DATA ---------------- */
 
@@ -129,6 +137,16 @@ const { ema = [], phq = [], studyDuration = 14 } = study || {};
     [ema]
   );
 
+  const cognitiveData = useMemo(
+  () =>
+    buildLineChart({
+      question: 6,
+      label: "Cognitive/Psychomotor (1–5)",
+      color: "rgb(20,184,166)",
+    }),
+  [ema]
+);
+
    /* ---------------- EARLY RETURNS ---------------- */
 
   if (loading) {
@@ -147,31 +165,37 @@ const { ema = [], phq = [], studyDuration = 14 } = study || {};
     );
   }
   /* ---------------- PHQ BAR CHART ---------------- */
+const sortedPhq = [...phq].sort(
+  (a, b) => new Date(a.submittedAt) - new Date(b.submittedAt)
+);
 
-  const baseline = phq.find(p => p.studyDay === 0);
-  const endpoint = phq.find(p => p.studyDay === studyDuration);
+const latestPhq = sortedPhq.length > 0
+  ? sortedPhq[sortedPhq.length - 1]
+  : null;
 
-  const phqBarData = {
-    labels: endpoint
-      ? ["Baseline (Day 0)", `Endpoint (Day ${studyDuration})`]
-      : ["Baseline (Day 0)"],
-    datasets: [
-      {
-        label: "PHQ-8 Total Score",
-        data: endpoint
-          ? [baseline?.totalScore, endpoint?.totalScore]
-          : [baseline?.totalScore],
-        backgroundColor: endpoint
-          ? ["rgba(99,102,241,0.7)", "rgba(34,197,94,0.7)"]
-          : ["rgba(99,102,241,0.7)"],
-      },
-    ],
-  };
+const previousPhq = sortedPhq.length > 1
+  ? sortedPhq[sortedPhq.length - 2]
+  : null;
+const phqBarData = latestPhq
+  ? {
+      labels: previousPhq
+        ? [formatDate(previousPhq.submittedAt), formatDate(latestPhq.submittedAt)]
+        : [formatDate(latestPhq.submittedAt)],
+      datasets: [
+        {
+          label: "PHQ-8 Total Score",
+          data: previousPhq
+            ? [previousPhq.totalScore, latestPhq.totalScore]
+            : [latestPhq.totalScore],
+          backgroundColor: previousPhq
+            ? ["rgba(34,197,94,0.7)", "rgba(16,185,129,0.7)"]
+            : ["rgba(16,185,129,0.7)"],
+        },
+      ],
+    }
+  : null;
 
-  /* ---------------- EMA PROGRESS ---------------- */
 
-  const completedDays = new Set(ema.map(e => e.studyDay)).size;
-  const emaPercentage = Math.round((completedDays / studyDuration) * 100);
 
   /* ---------------- CHART OPTIONS ---------------- */
 
@@ -212,59 +236,18 @@ const { ema = [], phq = [], studyDuration = 14 } = study || {};
             Symptom Monitoring Dashboard
           </h1>
           <p className="text-gray-600">
-            Track your symptoms and progress over the 14-day study period
+            Track your ongoing symptom patterns and assessment trends
           </p>
         </div>
 
-        {/* EMA Progress Card */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">
-            Daily Check-in Progress
-          </h2>
-          
-          {ema.length > 0 ? (
-            <div>
-              <div className="flex items-center gap-4 mb-4">
-                <div className="flex-1">
-                  <div className="bg-gray-200 rounded-full h-4 overflow-hidden">
-                    <div
-                      className="bg-blue-600 h-full transition-all duration-500"
-                      style={{ width: `${emaPercentage}%` }}
-                    ></div>
-                  </div>
-                </div>
-                <div className="text-sm font-semibold text-gray-700">
-                  {completedDays} / {studyDuration} days
-                </div>
-              </div>
-              <p className="text-sm text-gray-600">
-                You've completed {completedDays} daily check-ins. Keep going!
-              </p>
-            </div>
-          ) : (
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-              <p className="text-yellow-800 font-semibold">
-                No daily check-ins recorded yet
-              </p>
-              <p className="text-yellow-700 text-sm mt-1">
-                Complete your first daily check-in to start tracking your symptoms.
-              </p>
-              <button
-                onClick={() => navigate('/ema')}
-                className="mt-3 bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700 text-sm font-semibold"
-              >
-                Go to Daily Check-in
-              </button>
-            </div>
-          )}
-        </div>
+
 
         {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
           {/* Mood Chart */}
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Mood Tracking (14 Days)
+              Mood Tracking (Recent Trend)
             </h2>
             {moodData ? (
               <div className="h-64">
@@ -285,7 +268,7 @@ const { ema = [], phq = [], studyDuration = 14 } = study || {};
           {/* Anhedonia Chart */}
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Interest & Pleasure (14 Days)
+              Interest & Pleasure (Recent Trend)
             </h2>
             {anhedoniaData ? (
               <div className="h-64">
@@ -306,7 +289,7 @@ const { ema = [], phq = [], studyDuration = 14 } = study || {};
           {/* Energy/Sleep Chart */}
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Fatigue & Sleep Quality (14 Days)
+              Fatigue & Sleep Quality (Recent Trend)
             </h2>
             {fatigueData ? (
               <div className="h-64">
@@ -327,7 +310,7 @@ const { ema = [], phq = [], studyDuration = 14 } = study || {};
           {/* Self-Criticism Chart */}
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Self-Criticism (14 Days)
+              Self-Criticism (Recent Trend)
             </h2>
             {selfCriticismData ? (
               <div className="h-64">
@@ -346,13 +329,14 @@ const { ema = [], phq = [], studyDuration = 14 } = study || {};
           </div>
 
           {/* Cognitive/Psychomotor Chart */}
+          
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Cognitive/Psychomotor Symptoms (14 Days)
+              Cognitive/Psychomotor Symptoms (Recent Trend)
             </h2>
-            {fatigueData ? (
+            {cognitiveData ? (
               <div className="h-64">
-                <Line data={fatigueData} options={lineOptions} />
+                <Line data={cognitiveData} options={lineOptions} />
               </div>
             ) : (
               <div className="h-64 flex items-center justify-center bg-gray-50 rounded">
@@ -365,6 +349,8 @@ const { ema = [], phq = [], studyDuration = 14 } = study || {};
               Racing thoughts or restlessness severity • Lower scores are better
             </p>
           </div>
+
+
         </div>
 
         {/* PHQ-8 Comparison Chart */}
@@ -372,32 +358,31 @@ const { ema = [], phq = [], studyDuration = 14 } = study || {};
           <h2 className="text-lg font-semibold text-gray-800 mb-4">
             PHQ-8 Assessment Comparison
           </h2>
-          {baseline ? (
+          {latestPhq ? (
             <div>
               <div className="h-80">
                 <Bar data={phqBarData} options={barOptions} />
               </div>
               
-              {endpoint && (
-                <div className="mt-4 bg-blue-50 border-l-4 border-blue-400 p-3">
-                  <p className="text-blue-800 text-sm">
-                    <strong>Comparison:</strong> Your PHQ-8 score changed from {baseline.totalScore} to {endpoint.totalScore}.
+              {previousPhq && (
+                <div className="mt-4 bg-emerald-50 border-l-4 border-emerald-600 p-3">
+                  <p className="text-emerald-800 text-sm">
+                    <strong>Comparison:</strong> Your PHQ-8 score changed from {previousPhq.totalScore} to {latestPhq.totalScore}.
                   </p>
                 </div>
               )}
               
-              {!endpoint && (
-                <div className="mt-4 bg-blue-50 border-l-4 border-blue-400 p-3">
-                  <p className="text-blue-800 text-sm">
-                    <strong>Note:</strong> Day 14 assessment not yet completed. 
-                    Complete your endpoint PHQ-8 on Day 14 to see comparison.
-                  </p>
-                </div>
-              )}
+             {!previousPhq && (
+  <div className="mt-4 bg-emerald-50 border-l-4 border-emerald-600 p-3">
+    <p className="text-emerald-800 text-sm">
+      This is your first PHQ-8 assessment. Complete another assessment later to see changes over time.
+    </p>
+  </div>
+)}
               
               {/* Disclaimer */}
-              <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded p-3">
-                <p className="text-xs text-yellow-800">
+              <div className="mt-4 bg-amber-50 border border-amber-200 rounded p-3">
+                <p className="text-xs text-amber-800">
                   <strong>Disclaimer:</strong> This data is for monitoring and informational purposes only. 
                   It does NOT constitute a clinical diagnosis. Professional assessment is required for any clinical interpretation.
                 </p>
@@ -411,7 +396,7 @@ const { ema = [], phq = [], studyDuration = 14 } = study || {};
                 </p>
                 <button
                   onClick={() => navigate('/phq')}
-                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-semibold"
+                  className="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700 text-sm font-semibold"
                 >
                   Complete PHQ-8 Assessment
                 </button>
@@ -419,9 +404,52 @@ const { ema = [], phq = [], studyDuration = 14 } = study || {};
             </div>
           )}
         </div>
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+  <h2 className="text-xl font-semibold text-gray-900 mb-4">
+  Recent 7-Day EMA Summary
+</h2>
+
+{ema.length >= 2 && ema_summary ? (
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-sm">
+    
+    <div>
+      <p className="text-gray-600">Adherence</p>
+      <p className="font-semibold text-gray-900 text-lg">
+        {ema_summary.adherence_percent}%
+      </p>
+    </div>
+
+    <div>
+      <p className="text-gray-600">Avg Depression</p>
+      <p className="font-semibold text-gray-900 text-lg">
+        {ema_summary.weekly_avg_depression?.toFixed(2)}
+      </p>
+    </div>
+
+    <div>
+      <p className="text-gray-600">Mood Variability</p>
+      <p className="font-semibold text-gray-900 text-lg">
+        {ema_summary.mood_variability?.toFixed(2)}
+      </p>
+    </div>
+
+    <div>
+      <p className="text-gray-600">Trend</p>
+      <p className="font-semibold text-gray-900 text-lg">
+        {ema_summary.trend_depression}
+      </p>
+    </div>
+
+  </div>
+) : (
+  <p className="text-sm text-gray-600">
+    Not enough EMA data for summary.
+  </p>
+)}
+</div>
 
         {/* Info Footer */}
-        <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="mt-8 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
           <p className="text-sm text-gray-700">
             <strong>Dashboard Information:</strong> This dashboard displays your daily monitoring data from EMA entries and PHQ-8 assessments. 
             Charts update automatically as you complete daily check-ins.

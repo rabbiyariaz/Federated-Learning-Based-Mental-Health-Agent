@@ -1,6 +1,7 @@
 const BASE_URL = "http://127.0.0.1:8000";
-const SESSION_ID_KEY = "sessionId";
-const USER_ID_KEY = "userId";
+
+
+
 
 async function createSession() {
   const res = await fetch(`${BASE_URL}/api/sessions/create`, {
@@ -17,27 +18,25 @@ async function createSession() {
 
 
 
-export async function getOrCreateSessionId() {
-  const existing = localStorage.getItem(SESSION_ID_KEY);
 
-  if (existing) {
-    try {
-      const res = await fetch(`${BASE_URL}/api/sessions/validate/${existing}`);
-      if (res.ok) {
-        return existing;
-      }
-    } catch (err) {
-      console.error("Session validation failed:", err);
-    }
+export async function getOrCreateToken() {
+  const existingToken = localStorage.getItem("token");
+
+  if (existingToken) {
+    return existingToken;
   }
 
-  const session = await createSession();
-  const sessionId = session.session_id;
+  const res = await fetch(`${BASE_URL}/api/sessions/create`, {
+    method: "POST"
+  });
 
-  localStorage.setItem(SESSION_ID_KEY, sessionId);
-  localStorage.setItem(USER_ID_KEY, sessionId);
+  if (!res.ok) {
+    throw new Error("Failed to create session");
+  }
 
-  return sessionId;
+  const data = await res.json();
+  localStorage.setItem("token", data.access_token);
+  return data.access_token;
 }
 
 export async function checkHealth() {
@@ -67,26 +66,35 @@ export async function predictText(text) {
 -------------------------- */
 
 export async function submitPHQ(payload) {
-  const resolvedPayload = { ...payload };
-  if (!resolvedPayload.user_id) {
-    resolvedPayload.user_id = await getOrCreateSessionId();
-  }
+  let token = await getOrCreateToken();
 
-  const res = await fetch(`${BASE_URL}/phq`, {
+  let res = await fetch(`${BASE_URL}/phq`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(resolvedPayload),
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
   });
 
-  if (!res.ok) {
-  let msg;
-  try {
-    msg = await res.json();
-  } catch {
-    msg = await res.text();
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    token = await getOrCreateToken();
+
+    res = await fetch(`${BASE_URL}/phq`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
   }
-  throw new Error(`PHQ submission failed: ${res.status} ${JSON.stringify(msg)}`);
-}
+
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(`PHQ submission failed: ${res.status} ${msg}`);
+  }
 
   return res.json();
 }
@@ -96,16 +104,30 @@ export async function submitPHQ(payload) {
 -------------------------- */
 
 export async function submitEMA(payload) {
-  const resolvedPayload = { ...payload };
-  if (!resolvedPayload.user_id) {
-    resolvedPayload.user_id = await getOrCreateSessionId();
-  }
+  let token = await getOrCreateToken();
 
-  const res = await fetch(`${BASE_URL}/ema`, {
+  let res = await fetch(`${BASE_URL}/ema`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(resolvedPayload),
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
   });
+
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    token = await getOrCreateToken();
+
+    res = await fetch(`${BASE_URL}/ema`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+  }
 
   if (!res.ok) {
     const msg = await res.text();
@@ -115,27 +137,120 @@ export async function submitEMA(payload) {
   return res.json();
 }
 
+export async function fetchEMATodayStatus() {
+  let token = await getOrCreateToken();
+
+  let res = await fetch(`${BASE_URL}/ema/today-status`, {
+    headers: {
+      "Authorization": `Bearer ${token}`
+    }
+  });
+
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    token = await getOrCreateToken();
+
+    res = await fetch(`${BASE_URL}/ema/today-status`, {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
+  }
+
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(`EMA status check failed: ${res.status} ${msg}`);
+  }
+
+  return res.json();
+}
+
 /* -------------------------
    Report API
 -------------------------- */
+export async function fetchReport(signal) {
+  let token = await getOrCreateToken();
 
-export async function fetchReport(userId, signal) {
-  const res = await fetch(`${BASE_URL}/report/${userId}`, { signal });
+  let res = await fetch(`${BASE_URL}/report`, {
+    signal,
+    headers: {
+      "Authorization": `Bearer ${token}`
+    }
+  });
+
+  // If token expired → clear + regenerate once
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    token = await getOrCreateToken();
+
+    res = await fetch(`${BASE_URL}/report`, {
+      signal,
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
+  }
+
   if (!res.ok) {
     const msg = await res.text();
     throw new Error(`Report fetch failed: ${res.status} ${msg}`);
   }
-  return res.json(); // or blob() later for PDF
-}
 
+  return res.json();
+}
 /* -------------------------
   DashBoard
 -------------------------- */
-export async function fetchDashboardSummary(userId) {
-  const res = await fetch(`${BASE_URL}/api/study/${userId}/summary`);
+export async function fetchDashboardSummary() {
+  let token = await getOrCreateToken();
+
+  let res = await fetch(`${BASE_URL}/api/study/summary`, {
+    headers: {
+      "Authorization": `Bearer ${token}`
+    }
+  });
+
+  // If token expired → clear and retry once
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    token = await getOrCreateToken();
+
+    res = await fetch(`${BASE_URL}/api/study/summary`, {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
+  }
+
   if (!res.ok) {
     const msg = await res.text();
     throw new Error(`Dashboard fetch failed: ${res.status} ${msg}`);
   }
+
   return res.json();
 }
+
+
+
+// export async function getOrCreateSessionId() {
+//   const existing = localStorage.getItem(SESSION_ID_KEY);
+
+//   if (existing) {
+//     try {
+//       const res = await fetch(`${BASE_URL}/api/sessions/validate/${existing}`);
+//       if (res.ok) {
+//         return existing;
+//       }
+//     } catch (err) {
+//       console.error("Session validation failed:", err);
+//     }
+//   }
+
+//   const session = await createSession();
+//   const sessionId = session.session_id;
+
+//   localStorage.setItem(SESSION_ID_KEY, sessionId);
+//   localStorage.setItem(USER_ID_KEY, sessionId);
+
+//   return sessionId;
+// }

@@ -3,6 +3,7 @@ from typing import Dict, Union
 from datetime import date, datetime
 
 
+
 class SessionCreate(BaseModel):
     pass
 
@@ -15,12 +16,15 @@ class SessionResponse(BaseModel):
         from_attributes = True
 
 
-class EMACreate(BaseModel):
-    user_id: str
-    date_submitted: date
-    responses: Dict[str, Union[int, str]]
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
 
 class PHQCreate(BaseModel):
-    user_id: str
-    study_day: int
     responses: Dict[str, int]
+
+
+
+class EMACreate(BaseModel):
+    date_submitted: date
+    responses: Dict[str, Union[int, str]]

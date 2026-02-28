@@ -5,22 +5,18 @@ from sqlalchemy.exc import IntegrityError
 from app.database import SessionLocal
 from app.models import PHQAssessment
 from app.schemas import PHQCreate
+from app.database import get_db
+from app.auth import verify_token
 
 router = APIRouter(prefix="/phq")
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
 
 @router.post("")
-def submit_phq(payload: PHQCreate, db: Session = Depends(get_db)):
 
-    # 1️⃣ Validate study day
-    if payload.study_day not in [0, 14]:
-        raise HTTPException(400, "Invalid study day")
+def submit_phq(payload: PHQCreate,
+               session_id: str = Depends(verify_token),
+               db: Session = Depends(get_db)):
 
     # 2️⃣ Validate PHQ-8 responses
     if len(payload.responses) != 8:
@@ -32,11 +28,22 @@ def submit_phq(payload: PHQCreate, db: Session = Depends(get_db)):
     # 3️⃣ Backend-controlled score calculation
     total_score = sum(payload.responses.values())
 
+    if total_score <= 4:
+        severity = "minimal"
+    elif total_score <= 9:
+        severity = "mild"
+    elif total_score <= 14:
+        severity = "moderate"
+    elif total_score <= 19:
+        severity = "moderately_severe"
+    else:
+        severity = "severe"
+
     record = PHQAssessment(
-        user_id=payload.user_id,
-        study_day=payload.study_day,
+        user_id=session_id, 
         responses=payload.responses,
         total_score=total_score,
+        severity_level=severity,
         submitted_at=datetime.now(timezone.utc)
     )
 
@@ -47,15 +54,16 @@ def submit_phq(payload: PHQCreate, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(
             status_code=400,
-            detail="PHQ already submitted for this study day"
+            
         )
 
     # 4️⃣ Clean response
     return {
         "status": "ok",
-        "user_id": payload.user_id,
-        "study_day": payload.study_day,
-        "total_score": total_score
+        "total_score": total_score,
+        "severity": severity
+
+
     }
 
 

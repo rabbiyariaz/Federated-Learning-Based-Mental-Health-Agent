@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { getOrCreateSessionId, submitEMA } from "../api/backend";
+import { useNavigate, Link } from 'react-router-dom';
+import { getOrCreateToken, submitEMA, fetchEMATodayStatus } from "../api/backend";
 
 /**
  * EMAPage Component - Daily Ecological Momentary Assessment
@@ -76,44 +76,31 @@ export default function EMAPage() {
   // State management
   const [responses, setResponses] = useState({});
   const [compositeResponse, setCompositeResponse] = useState(null); // For Q5 radio selection
-  const [alreadySubmittedToday, setAlreadySubmittedToday] = useState(false);
+  const [submissionStatus, setSubmissionStatus] = useState(null);
   const [todayDate, setTodayDate] = useState(new Date().toDateString());
+  const [error, setError] = useState(null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(true);
 
   /**
    * Initialize component: Check if EMA already submitted today
    * Compare stored date with current date
    */
   useEffect(() => {
-    const checkTodaySubmission = () => {
-      const studyData = JSON.parse(localStorage.getItem('studyData')) || {};
-      const emaData = studyData.emaEntries || [];
-
-      // Get today's date as string (e.g., "Fri Jan 31 2025")
-      const currentDate = new Date().toDateString();
-
-      // Check if any EMA entry exists for today
-      const submittedToday = emaData.some(
-        (entry) => new Date(entry.submittedAt).toDateString() === currentDate
-      );
-
-      setAlreadySubmittedToday(submittedToday);
-      setTodayDate(currentDate);
-
-      // If submitted today, initialize responses with today's data (for display only)
-      if (submittedToday) {
-        const todayEntry = emaData.find(
-          (entry) => new Date(entry.submittedAt).toDateString() === currentDate
-        );
-        if (todayEntry) {
-          setResponses(todayEntry.responses);
-          if (todayEntry.compositeResponse) {
-            setCompositeResponse(todayEntry.compositeResponse);
-          }
+    const checkTodayStatus = async () => {
+      try {
+        const status = await fetchEMATodayStatus();
+        if (status?.submitted) {
+          setSubmissionStatus("already_submitted");
+          setError("Today's EMA has already been submitted. You can submit again tomorrow.");
         }
+      } catch (err) {
+        setError(err.message || "Could not check today's EMA status.");
+      } finally {
+        setIsCheckingStatus(false);
       }
     };
 
-    checkTodaySubmission();
+    checkTodayStatus();
   }, []);
 
   /**
@@ -139,18 +126,7 @@ export default function EMAPage() {
 };
 
 
-const calculateStudyDay = () => {
-  const consentData = JSON.parse(localStorage.getItem('userConsent')) || {};
-  if (!consentData.consentDate) return 1;
 
-  const consentDate = normalizeToMidnight(consentData.consentDate);
-  const today = normalizeToMidnight(new Date());
-
-  const daysDifference =
-    (today - consentDate) / (1000 * 60 * 60 * 24);
-
-  return Math.min(daysDifference + 1, 14);
-};
 
 
   /**
@@ -171,56 +147,59 @@ const calculateStudyDay = () => {
 
   /**
    * Handle form submission
-   * - Calculate study day
-   * - Save to localStorage with metadata
-   * - Navigate to dashboard
+   * - Validate all questions answered
+   * - Submit to backend
+   * - Show success message with next steps
    */
 
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
+    e.preventDefault();
+    setError(null);
 
-  if (!isFormComplete() || alreadySubmittedToday) return;
+    if (!isFormComplete()) return;
 
-  let sessionId;
+    let sessionId;
 
-  try {
-    sessionId = await getOrCreateSessionId();   // ✅ Single source of truth
-  } catch (err) {
-    alert("Could not create a session. Please try again.");
-    return;
-  }
+    try {
+      sessionId = await getOrCreateToken();
+    } catch (err) {
+      setError("Could not create token. Try again.");
+      return;
+    }
 
-  const todayISODate = new Date().toISOString().split("T")[0];
+    const todayISODate = new Date().toISOString().split("T")[0];
 
-  const payload = {
-    user_id: sessionId,   // ✅ Always use fresh sessionId
-    date_submitted: todayISODate,
-    responses: {
-      "1": responses[1],
-      "2": responses[2],
-      "3": responses[3],
-      "4": responses[4],
-      "5_severity": responses[5],
-      "5_type": compositeResponse,
-      "6": responses[6],
+    const payload = {
+      user_id: sessionId,
+      date_submitted: todayISODate,
+      responses: {
+        "1": responses[1],
+        "2": responses[2],
+        "3": responses[3],
+        "4": responses[4],
+        "5_severity": responses[5],
+        "5_type": compositeResponse,
+        "6": responses[6],
+      }
+    };
+
+    try {
+      await submitEMA(payload);
+      setSubmissionStatus("submitted");
+      window.scrollTo(0, 0);
+    } catch (err) {
+      if (err.message && err.message.includes("400")) {
+        setError("Today's EMA has already been submitted. You can submit again tomorrow.");
+        setSubmissionStatus("already_submitted");
+      } else {
+        setError(err.message || "Submission failed. Try again.");
+        setSubmissionStatus("error");
+      }
+      window.scrollTo(0, 0);
     }
   };
 
-  try {
-    await submitEMA(payload);
-    navigate('/dashboard');
-  } catch (err) {
-    if (err.response?.status === 400) {
-      alert(err.response.data.detail);
-    } else {
-      alert("Failed to submit EMA. Please try again.");
-    }
-  }
-};
-
-
-  const studyDay = calculateStudyDay();
   const completedCount = EMA_QUESTIONS.reduce((count, q) => {
   if (q.type === "slider") {
     return responses[q.id] !== undefined ? count + 1 : count;
@@ -235,29 +214,137 @@ const calculateStudyDay = () => {
   return count;
 }, 0);
 
+  if (isCheckingStatus) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8 px-4">
+        <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-sm p-6">
+          <p className="text-gray-700">Checking today&apos;s check-in status...</p>
+        </div>
+      </div>
+    );
+  }
+
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h1 className="text-2xl font-bold text-gray-800">Daily Check-in</h1>
-          <p className="text-gray-600 text-sm mt-1">
-            Day <span className="font-semibold">{studyDay}</span> of 14 • {todayDate}
-          </p>
-        </div>
+        {/* Success Screen */}
+        {submissionStatus === "submitted" ? (
+          <div className="bg-white rounded-lg shadow-lg p-8">
+            <div className="text-center mb-6">
+              <div className="text-6xl mb-4">✅</div>
+              <h1 className="text-3xl font-bold text-emerald-600 mb-2">
+                Daily Check-in Complete!
+              </h1>
+              <p className="text-gray-600">
+                Your daily assessment for {todayDate} has been saved successfully.
+              </p>
+            </div>
 
-        {/* Already Submitted Today Message */}
-        {alreadySubmittedToday && (
-          <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded mb-6">
-            <p className="text-green-800 font-semibold">
-              ✓ Today's entry already completed
-            </p>
-            <p className="text-green-700 text-sm mt-1">
-              You can submit again tomorrow.
-            </p>
+            {/* Next Steps */}
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-6 mb-8">
+              <h2 className="text-lg font-semibold text-gray-800 mb-4">What's Next?</h2>
+              <ul className="space-y-3 text-gray-700">
+                <li className="flex items-start">
+                  <span className="text-emerald-600 mr-3">•</span>
+                  <span>Come back <strong>tomorrow</strong> to complete another daily check-in</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-emerald-600 mr-3">•</span>
+                  <span>View your <strong>Dashboard</strong> to see trends and visualizations</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-emerald-600 mr-3">•</span>
+                  <span>Generate a <strong>Report</strong> anytime to see your mood summary</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Link
+                to="/dashboard"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+              >
+                📊 View Dashboard
+              </Link>
+              <Link
+                to="/report"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+              >
+                📄 Generate Report
+              </Link>
+              <Link
+                to="/"
+                className="bg-slate-600 hover:bg-slate-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+              >
+                🏠 Go Home
+              </Link>
+            </div>
           </div>
-        )}
+        ) : submissionStatus === "already_submitted" ? (
+          <div className="bg-white rounded-lg shadow-lg p-8">
+            <div className="text-center mb-6">
+              <div className="text-6xl mb-4">🗓️</div>
+              <h1 className="text-3xl font-bold text-amber-600 mb-2">
+                Today&apos;s Check-in Already Submitted
+              </h1>
+              <p className="text-gray-600">
+                You already completed your EMA for {todayDate}. Please come back tomorrow.
+              </p>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-8">
+              <p className="text-amber-800 font-medium">No action is needed right now.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Link
+                to="/dashboard"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+              >
+                📊 View Dashboard
+              </Link>
+              <Link
+                to="/report"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+              >
+                📄 Generate Report
+              </Link>
+              <Link
+                to="/"
+                className="bg-slate-600 hover:bg-slate-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+              >
+                🏠 Go Home
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+              <h1 className="text-2xl font-bold text-gray-800">Daily Check-in</h1>
+              <p className="text-gray-600 text-sm mt-1">
+                Daily EMA Check-in • {todayDate}
+              </p>
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className={`border-l-4 p-4 rounded mb-6 ${
+                submissionStatus === "already_submitted"
+                  ? 'bg-yellow-50 border-yellow-500'
+                  : 'bg-red-50 border-red-500'
+              }`}>
+                <p className={`font-semibold ${
+                  submissionStatus === "already_submitted"
+                    ? 'text-yellow-800'
+                    : 'text-red-800'
+                }`}>
+                  ⚠️ {error}
+                </p>
+              </div>
+            )}
 
         {/* Form */}
         <form onSubmit={handleSubmit}>
@@ -270,7 +357,7 @@ const calculateStudyDay = () => {
                 {/* Question Text */}
                 <div className="mb-4">
                   <label className="block text-sm font-semibold text-gray-800">
-                    <span className="text-blue-600 mr-2">{question.id}.</span>
+                    <span className="text-emerald-600 mr-2">{question.id}.</span>
                     {question.text}
                   </label>
                 </div>
@@ -287,7 +374,7 @@ const calculateStudyDay = () => {
                       onChange={(e) =>
                         handleSliderChange(question.id, e.target.value)
                       }
-                      disabled={alreadySubmittedToday}
+                      disabled={submissionStatus === "submitted"}
                       className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
 
@@ -303,7 +390,7 @@ const calculateStudyDay = () => {
                     {/* Current Value */}
                     {responses[question.id] && (
                       <div className="text-center">
-                        <span className="text-sm font-semibold text-blue-600">
+                        <span className="text-sm font-semibold text-emerald-600">
                           Selected: {question.labels[responses[question.id] - 1]}
                         </span>
                       </div>
@@ -325,8 +412,8 @@ const calculateStudyDay = () => {
                             value={option}
                             checked={compositeResponse === option}
                             onChange={(e) => setCompositeResponse(e.target.value)}
-                            disabled={alreadySubmittedToday}
-                            className="w-4 h-4 text-blue-600 cursor-pointer mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={submissionStatus === "submitted"}
+                            className="w-4 h-4 text-emerald-600 cursor-pointer mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
                           />
                           <label
                             htmlFor={`q5-radio-${idx}`}
@@ -353,8 +440,8 @@ const calculateStudyDay = () => {
                             onChange={(e) =>
                               handleSliderChange(question.id, e.target.value)
                             }
-                            disabled={alreadySubmittedToday}
-                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={submissionStatus === "submitted"}
+                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
                           />
 
                           {/* Scale Labels */}
@@ -369,7 +456,7 @@ const calculateStudyDay = () => {
                           {/* Current Value */}
                           {responses[question.id] && (
                             <div className="text-center">
-                              <span className="text-sm font-semibold text-blue-600">
+                              <span className="text-sm font-semibold text-emerald-600">
                                 Selected: {question.labels[responses[question.id] - 1]}
                               </span>
                             </div>
@@ -387,14 +474,14 @@ const calculateStudyDay = () => {
           <div className="mt-8">
             <button
               type="submit"
-              disabled={!isFormComplete() || alreadySubmittedToday}
+              disabled={!isFormComplete()}
               className={`w-full py-3 px-6 rounded-lg font-semibold transition-all duration-200 ${
-                isFormComplete() && !alreadySubmittedToday
-                  ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
+                isFormComplete()
+                  ? 'bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer'
                   : 'bg-gray-300 text-gray-600 cursor-not-allowed'
               }`}
             >
-              {alreadySubmittedToday ? 'Today\'s Entry Completed' : 'Submit Daily Check-in'}
+              Submit Daily Check-in
             </button>
           </div>
 
@@ -405,14 +492,16 @@ const calculateStudyDay = () => {
               {compositeResponse && " • Type selected"}
             </p>
           </div>
-        </form>
+            </form>
 
-        {/* Quick Tips */}
-        <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <p className="text-xs text-gray-700">
-            <strong>Tip:</strong> This should take about 1-2 minutes. Answer honestly based on today.
-          </p>
-        </div>
+            {/* Quick Tips */}
+            <div className="mt-8 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+              <p className="text-xs text-gray-700">
+                <strong>Tip:</strong> This should take about 1-2 minutes. Answer honestly based on today.
+              </p>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

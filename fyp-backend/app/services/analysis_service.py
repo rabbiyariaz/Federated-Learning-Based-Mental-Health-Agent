@@ -1,22 +1,24 @@
-import json
 import statistics
 
 def compute_ema_summary(ema_entries):
 
     if not ema_entries:
         return {
-            "weekly_avg_depression": None,
-            "weekly_avg_sleep": None,
-            "trend_depression": "No Data",
-            "trend_sleep": "No Data",
+            "weekly_avg_depression": 0,
+            "weekly_avg_anxiety": 0,
+            "weekly_avg_sleep": 0,
+            "mood_variability": 0,
+            "trend_depression": "No data",
+            "trend_sleep": "No data",
             "adherence_percent": 0,
             "clinical_interpretation": "No EMA data available."
         }
 
-    # Sort by date ascending (important for trend)
+    # Ensure chronological order
     ema_entries = sorted(ema_entries, key=lambda x: x.date_submitted)
 
     depression_scores = []
+    anxiety_scores = []
     sleep_scores = []
 
     for e in ema_entries:
@@ -32,31 +34,57 @@ def compute_ema_summary(ema_entries):
         daily_depression = q1 + q2 + q3 + q4 + q5
 
         depression_scores.append(daily_depression)
+        anxiety_scores.append(q2)
         sleep_scores.append(q6)
 
+    # --- Averages ---
     weekly_avg_depression = round(statistics.mean(depression_scores), 2)
+    weekly_avg_anxiety = round(statistics.mean(anxiety_scores), 2)
     weekly_avg_sleep = round(statistics.mean(sleep_scores), 2)
 
-    # --- Trend Detection ---
-    first_dep = depression_scores[0]
-    last_dep = depression_scores[-1]
-
-    if last_dep < first_dep:
-        trend_dep = "Improving"
-    elif last_dep > first_dep:
-        trend_dep = "Worsening"
+    # --- Mood Variability (standard deviation) ---
+    if len(depression_scores) > 1:
+        mood_variability = round(statistics.stdev(depression_scores), 2)
     else:
-        trend_dep = "Stable"
+        mood_variability = 0
 
-    first_sleep = sleep_scores[0]
-    last_sleep = sleep_scores[-1]
+    # --- Trend Detection (first half vs second half mean) ---
+    if len(depression_scores) >= 4:
+        mid = len(depression_scores) // 2
+        first_half = depression_scores[:mid]
+        second_half = depression_scores[mid:]
 
-    if last_sleep > first_sleep:
-        trend_sleep = "Improving"
-    elif last_sleep < first_sleep:
-        trend_sleep = "Worsening"
+        trend_value = statistics.mean(second_half) - statistics.mean(first_half)
+
+        if trend_value <= -1:
+            trend_dep = "Improving"
+        elif trend_value >= 1:
+            trend_dep = "Worsening"
+        else:
+            trend_dep = "Stable"
     else:
-        trend_sleep = "Stable"
+        trend_dep = "Insufficient data"
+
+    # --- Sleep Trend ---
+    if len(sleep_scores) >= 4:
+        mid = len(sleep_scores) // 2
+        first_half = sleep_scores[:mid]
+        second_half = sleep_scores[mid:]
+
+        trend_value_sleep = statistics.mean(second_half) - statistics.mean(first_half)
+
+        if trend_value_sleep >= 0.5:
+            trend_sleep = "Improving"
+        elif trend_value_sleep <= -0.5:
+            trend_sleep = "Worsening"
+        else:
+            trend_sleep = "Stable"
+    else:
+        trend_sleep = "Insufficient data"
+
+    # --- Adherence ---
+    expected_days = 7
+    adherence_percent = round(len(ema_entries) / expected_days * 100, 1)
 
     # --- Clinical Interpretation ---
     if weekly_avg_depression >= 18:
@@ -70,57 +98,75 @@ def compute_ema_summary(ema_entries):
 
     clinical_note = (
         f"Weekly average depression index is {weekly_avg_depression}, "
-        f"indicating {severity}. Symptom trajectory appears {trend_dep.lower()}. "
-        f"Average sleep quality was {weekly_avg_sleep}, with sleep trend {trend_sleep.lower()}."
+        f"indicating {severity}. Mood variability is {mood_variability}. "
+        f"Depression trend appears {trend_dep.lower()}. "
+        f"Average sleep was {weekly_avg_sleep}, with sleep trend {trend_sleep.lower()}."
     )
 
     return {
         "weekly_avg_depression": weekly_avg_depression,
+        "weekly_avg_anxiety": weekly_avg_anxiety,
         "weekly_avg_sleep": weekly_avg_sleep,
+        "mood_variability": mood_variability,
         "trend_depression": trend_dep,
         "trend_sleep": trend_sleep,
-        "adherence_percent": round(len(ema_entries) / 14 * 100, 1),
+        "adherence_percent": adherence_percent,
         "clinical_interpretation": clinical_note
     }
+def compute_phq_progress(previous, current):
 
-# import statistics
+    gap_days = (current.submitted_at - previous.submitted_at).days
 
-# def compute_ema_summary(ema_entries):
-#     if not ema_entries:
-#         return {
-#             "mean_ema_score": None,
-#             "sd_ema_score": None,
-#             "adherence": 0
-#         }
+    if gap_days < 7:
+        return None  # Not valid comparison
 
-#     daily_scores = []
+    delta = current.total_score - previous.total_score
 
-#     for e in ema_entries:
-#         responses = e.responses or {}
+    if delta <= -5:
+        status = "Significant improvement"
+    elif delta >= 5:
+        status = "Significant worsening"
+    else:
+        status = "No major change"
 
-#         values = [
-#             responses.get("1"),
-#             responses.get("2"),
-#             responses.get("3"),
-#             responses.get("4"),
-#         ]
+    remission = current.total_score <= 5
 
-#         # Filter out None values safely
-#         values = [v for v in values if isinstance(v, (int, float))]
+    return {
+        "previous_score": previous.total_score,
+        "current_score": current.total_score,
+        "change": delta,
+        "status": status,
+        "remission": remission,
+        "days_between": gap_days
+    }
+def generate_weekly_report(user_id, ema_summary, phq_progress=None):
 
-#         if values:
-#             daily_score = statistics.mean(values)
-#             daily_scores.append(daily_score)
+    recommendations = []
+    relapse_flag = False
 
-#     if not daily_scores:
-#         return {
-#             "mean_ema_score": None,
-#             "sd_ema_score": None,
-#             "adherence": round(len(ema_entries) / 14 * 100, 1)
-#         }
+    # EMA-based signals
+    if ema_summary["weekly_avg_depression"] >= 12:
+        recommendations.append("Moderate depressive burden. Consider clinical review.")
 
-#     return {
-#         "mean_ema_score": round(statistics.mean(daily_scores), 2),
-#         "sd_ema_score": round(statistics.stdev(daily_scores), 2) if len(daily_scores) > 1 else 0,
-#         "adherence": round(len(ema_entries) / 14 * 100, 1)
-#     }
+    if ema_summary["trend_depression"] == "Worsening":
+        recommendations.append("Depression trend worsening. Monitor closely.")
+
+    if ema_summary["mood_variability"] >= 3:
+        recommendations.append("High mood variability detected.")
+
+    # PHQ-based signals
+    if phq_progress:
+        if phq_progress["status"] == "Significant worsening":
+            recommendations.append("PHQ score significantly increased.")
+            relapse_flag = True
+
+        if phq_progress["remission"]:
+            recommendations.append("Remission criteria met.")
+
+    return {
+        "user_id": user_id,
+        "week_summary": ema_summary,
+        "phq_progress": phq_progress,
+        "relapse_flag": relapse_flag,
+        "recommendations": recommendations
+    }

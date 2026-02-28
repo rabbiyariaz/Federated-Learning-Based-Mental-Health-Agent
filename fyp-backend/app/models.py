@@ -16,13 +16,15 @@ class PHQAssessment(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("sessions.session_id"),index=True,)
-    study_day = Column(Integer)
     responses = Column(JSON)
-    total_score = Column(Integer)
-    submitted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    __table_args__ = (
-        UniqueConstraint("user_id", "study_day", name="uq_user_study_day"),
-    )
+    total_score = Column(Integer, index=True)
+    severity_level = Column(String, index=True)
+
+    submitted_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        index=True
+    )    
 
 
 class EMAEntry(Base):

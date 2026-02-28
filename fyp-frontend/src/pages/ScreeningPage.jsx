@@ -11,9 +11,7 @@ function ScreeningPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const handleMoodChange = (data) => {
-    setMoodData(data);
-  };
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -68,7 +66,7 @@ function ScreeningPage() {
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-teal-400 mb-2">Mental Health Screening</h1>
+        <h1 className="text-3xl font-bold text-emerald-700 mb-2">Mental Health Screening</h1>
         <p className="text-slate-300">
           Enter your thoughts, feelings, or journal entry below. The AI will analyze your text 
           to detect emotions and provide a general risk assessment.
@@ -87,7 +85,7 @@ function ScreeningPage() {
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Type or paste your thoughts, feelings, or journal entry here..."
-            className="w-full h-64 px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-y"
+            className="w-full h-64 px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-y"
             disabled={isLoading}
           />
           <p className="mt-2 text-sm text-slate-400">
@@ -95,8 +93,7 @@ function ScreeningPage() {
           </p>
         </div>
 
-        {/* Mood Questions */}
-        <MoodQuestions onMoodChange={handleMoodChange} />
+
 
         {/* Error Message */}
         {error && (
@@ -110,7 +107,7 @@ function ScreeningPage() {
           <button
             type="submit"
             disabled={isLoading || !text.trim()}
-            className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+            className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-colors"
           >
             {isLoading ? (
               <span className="flex items-center justify-center">
@@ -146,7 +143,7 @@ function ScreeningPage() {
 
       {results && (
         <div className="mt-6 bg-slate-800 border border-slate-700 rounded-lg p-6 space-y-4">
-          <h2 className="text-2xl font-bold text-teal-400 mb-4">Analysis Results</h2>
+          <h2 className="text-2xl font-bold text-emerald-700 mb-4">Analysis Results</h2>
           
           <div className="space-y-3">
             <div>
@@ -173,7 +170,7 @@ function ScreeningPage() {
                       {Object.entries(results.emotion_probs).map(([emotion, prob]) => (
                         <li key={emotion} className="text-slate-200">
                           <span className="capitalize">{emotion}: </span>
-                          <span className="text-teal-400">{(typeof prob === 'number' ? (prob * 100).toFixed(1) : prob)}%</span>
+                          <span className="text-emerald-600">{(typeof prob === 'number' ? (prob * 100).toFixed(1) : prob)}%</span>
                         </li>
                       ))}
                     </ul>
