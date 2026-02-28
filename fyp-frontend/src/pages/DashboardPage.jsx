@@ -101,7 +101,7 @@ const buildLineChart = ({ question, label, color }) => {
     () =>
       buildLineChart({
         question: 1,
-        label: "Low Mood (1–5)",
+        label: "Low Mood (0–4)",
         color: "rgb(59,130,246)",
       }),
     [ema]
@@ -111,7 +111,7 @@ const buildLineChart = ({ question, label, color }) => {
     () =>
       buildLineChart({
         question: 2,
-        label: "Anhedonia (1–5)",
+        label: "Anhedonia (0–4)",
         color: "rgb(168,85,247)",
       }),
     [ema]
@@ -121,7 +121,7 @@ const buildLineChart = ({ question, label, color }) => {
     () =>
       buildLineChart({
         question: 3,
-        label: "Fatigue (1–5)",
+        label: "Fatigue (0–4)",
         color: "rgb(239,68,68)",
       }),
     [ema]
@@ -131,7 +131,7 @@ const buildLineChart = ({ question, label, color }) => {
     () =>
       buildLineChart({
         question: 4,
-        label: "Self-Criticism (1–5)",
+        label: "Self-Criticism (0–4)",
         color: "rgb(251,146,60)",
       }),
     [ema]
@@ -141,7 +141,7 @@ const buildLineChart = ({ question, label, color }) => {
   () =>
     buildLineChart({
       question: 6,
-      label: "Sleep Quality (1–5)",
+      label: "Sleep Quality (0–4)",
       color: "rgb(20,184,166)",
     }),
   [ema]
@@ -151,7 +151,7 @@ const buildLineChart = ({ question, label, color }) => {
   () =>
     buildLineChart({
       question: "5_severity",
-      label: "Cognitive / Psychomotor (1–5)",
+      label: "Cognitive / Psychomotor (0–4)",
       color: "rgb(20,184,166)",
     }),
   [ema]
@@ -214,8 +214,9 @@ const phqBarData = latestPhq
     maintainAspectRatio: false,
     scales: {
       y: {
-        min: 1,
-        max: 5,
+        beginAtZero: true,
+        min: 0,
+        max: 4,
         ticks: { stepSize: 1 },
       },
     },

@@ -14,38 +14,38 @@ import { getOrCreateToken, submitEMA, fetchEMATodayStatus } from "../api/backend
  * EMA is a validated method for capturing real-time, real-world symptom data
  */
 
-// Daily EMA questions with slider scale (1-5)
+// Daily EMA questions with slider scale (0-4, where 0 = "Not at all")
 const EMA_QUESTIONS = [
   {
     id: 1,
     text: "Today, to what extent did you feel sad, down, or hopeless?",
     type: "slider",
-    min: 1,
-    max: 5,
+    min: 0,
+    max: 4,
     labels: ["Not at all", "Slightly", "Moderately", "Quite a bit", "Extremely"],
   },
   {
     id: 2,
     text: "Today, to what extent did you experience reduced interest or pleasure in activities you usually enjoy?",
     type: "slider",
-    min: 1,
-    max: 5,
+    min: 0,
+    max: 4,
     labels: ["Not at all", "Slightly", "Moderately", "Quite a bit", "Extremely"],
   },
   {
     id: 3,
     text: "Today, to what extent did you feel tired or lacking in energy?",
     type: "slider",
-    min: 1,
-    max: 5,
+    min: 0,
+    max: 4,
     labels: ["Not at all", "Slightly", "Moderately", "Quite a bit", "Extremely"],
   },
   {
     id: 4,
     text: "Today, to what extent did you feel negative about yourself or feel like a failure?",
     type: "slider",
-    min: 1,
-    max: 5,
+    min: 0,
+    max: 4,
     labels: ["Not at all", "Slightly", "Moderately", "Quite a bit", "Extremely"],
   },
   {
@@ -56,16 +56,16 @@ const EMA_QUESTIONS = [
       "My mind was frequently occupied by racing or negative thoughts",
       "I felt restless or found it difficult to sit still",
     ],
-    min: 1,
-    max: 5,
+    min: 0,
+    max: 4,
     labels: ["Not at all", "Slightly", "Moderately", "Quite a bit", "Extremely"],
   },
   {
     id: 6,
     text: "How would you rate the quality of your sleep last night?",
     type: "slider",
-    min: 1,
-    max: 5,
+    min: 0,
+    max: 4,
     labels: ["Very poor", "Poor", "Fair", "Good", "Very good"],
   },
 ];
@@ -138,7 +138,7 @@ export default function EMAPage() {
     if (q.type === 'slider' && responses[q.id] === undefined) return false;
 
     if (q.type === 'composite') {
-      if (!compositeResponse || !responses[q.id]) return false;
+      if (!compositeResponse || responses[q.id] === undefined) return false;
     }
   }
   return true;
@@ -382,16 +382,16 @@ export default function EMAPage() {
                     <div className="flex justify-between items-center text-xs text-gray-500">
                       {question.labels.map((label, idx) => (
                         <span key={idx} className="text-center flex-1">
-                          {idx + 1}. {label}
+                          {idx}. {label}
                         </span>
                       ))}
                     </div>
 
                     {/* Current Value */}
-                    {responses[question.id] && (
+                    {responses[question.id] !== undefined && (
                       <div className="text-center">
                         <span className="text-sm font-semibold text-emerald-600">
-                          Selected: {question.labels[responses[question.id] - 1]}
+                          Selected: {question.labels[responses[question.id]]}
                         </span>
                       </div>
                     )}
@@ -448,16 +448,16 @@ export default function EMAPage() {
                           <div className="flex justify-between items-center text-xs text-gray-500">
                             {question.labels.map((label, idx) => (
                               <span key={idx} className="text-center flex-1">
-                                {idx + 1}. {label}
+                                {idx}. {label}
                               </span>
                             ))}
                           </div>
 
                           {/* Current Value */}
-                          {responses[question.id] && (
+                          {responses[question.id] !== undefined && (
                             <div className="text-center">
                               <span className="text-sm font-semibold text-emerald-600">
-                                Selected: {question.labels[responses[question.id] - 1]}
+                                Selected: {question.labels[responses[question.id]]}
                               </span>
                             </div>
                           )}

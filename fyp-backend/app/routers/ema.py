@@ -64,14 +64,14 @@ def submit_ema(payload: EMACreate,
             detail="Missing required EMA fields"
         )
 
-    # 3️⃣ Validate numeric ranges (1–5)
+    # 3️⃣ Validate numeric ranges (0–4)
     for key in NUMERIC_KEYS:
         value = responses.get(key)
 
-        if not isinstance(value, int) or not (1 <= value <= 5):
+        if not isinstance(value, int) or not (0 <= value <= 4):
             raise HTTPException(
                 status_code=400,
-                detail=f"{key} must be an integer between 1 and 5"
+                detail=f"{key} must be an integer between 0 and 4"
             )
 
     # 4️⃣ Validate 5_type

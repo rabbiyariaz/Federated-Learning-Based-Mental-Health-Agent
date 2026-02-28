@@ -2,7 +2,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.models import EMAEntry, PHQAssessment
-from app.services.analysis_service import compute_ema_summary
+from app.services.analysis_service import compute_ema_summary, compute_phq_trend
 from app.database import get_db
 from app.auth import verify_token
 
@@ -69,18 +69,16 @@ def generate_report(
                 "days_between": gap_days
             }
 
-
-
-
-            
+    # 4️⃣ PHQ Trend Analysis (across all valid PHQs ≥7 days apart)
+    phq_trend = compute_phq_trend(phqs)
     
-
     return {
         "latest_phq": {
             "score": latest_phq.total_score,
             "submittedAt": latest_phq.submitted_at.isoformat()
         },
         "phq_progress": phq_progress,
+        "phq_trend": phq_trend,
         "ema_summary": ema_summary,
         "ema_days_completed": len(ema_entries),
 

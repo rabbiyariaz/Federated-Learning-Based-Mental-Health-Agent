@@ -45,9 +45,13 @@ const delta = phqProgress?.change ?? null;
           setReport(data);
         }
       } catch (err) {
+  if (err.name === "AbortError") {
+    return; // silently ignore
+  }
+
   console.error("Report fetch error:", err);
 
-  if (err.name !== "AbortError" && isMounted) {
+  if (isMounted) {
     setError("Could not load report");
   }
 } finally {
@@ -82,11 +86,6 @@ const delta = phqProgress?.change ?? null;
       ? new Date(consentData.consentDate).toLocaleDateString()
       : 'N/A';
 
-    // const changeFromBaseline =
-    //   baseline !== null && followUp !== null
-    //     ? followUp - baseline
-    //     : null;
-
     const reportContent = `
 PERSONAL SYMPTOM MONITORING SUMMARY
 ====================================
@@ -102,11 +101,25 @@ ${baseline !== null ? `Severity: ${getPHQSeverityLabel(baseline)}` : ''}
 Most Recent Score: ${latestPhq?.score ?? 'N/A'}
 ${latestPhq ? `Current Severity: ${getPHQSeverityLabel(latestPhq.score)}` : ''}
 
-${
-  delta !== null
-    ? `Change Over Time: ${delta > 0 ? '+' : ''}${delta} points`
-    : ''
-}
+${phqProgress ? `
+Recent Change (Last Two Assessments):
+  Previous Score: ${phqProgress.previous_score}
+  Current Score: ${phqProgress.current_score}
+  Change: ${phqProgress.change > 0 ? '+' : ''}${phqProgress.change} points
+  Status: ${phqProgress.status}
+  Days Between: ${phqProgress.days_between} days
+` : ''}
+
+${report?.phq_trend ? `
+Overall PHQ Trend (${report.phq_trend.num_assessments} Assessments):
+  First Score: ${report.phq_trend.first_score}
+  Latest Score: ${report.phq_trend.last_score}
+  Total Change: ${report.phq_trend.total_change > 0 ? '+' : ''}${report.phq_trend.total_change} points
+  Trend Direction: ${report.phq_trend.trend_direction}
+  ${report.phq_trend.pattern ? `Pattern: ${report.phq_trend.pattern}` : ''}
+  Tracking Period: ${report.phq_trend.timespan_days} days
+  Average Change: ${report.phq_trend.avg_change_per_interval > 0 ? '+' : ''}${report.phq_trend.avg_change_per_interval} points per interval
+` : ''}
 
 DAILY CHECK-INS
 ---------------
@@ -250,6 +263,117 @@ Generated on: ${new Date().toLocaleString()}
     </div>
   </div>
 )}
+
+{/* PHQ Progress & Trend Section */}
+{(phqProgress || report?.phq_trend) && (
+  <div className="bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-200">
+    <h3 className="text-lg font-semibold text-gray-800 mb-4">
+      PHQ-8 Progress & Trend Analysis
+    </h3>
+
+    <div className="space-y-4">
+      {/* Recent Change (2 most recent PHQs) */}
+      {phqProgress && (
+        <div className="bg-gray-50 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">
+            Recent Change (Last Two Assessments)
+          </h4>
+          
+          <div className="grid grid-cols-2 gap-4 mb-3">
+            <div>
+              <p className="text-xs text-gray-500">Previous Score</p>
+              <p className="text-2xl font-bold text-gray-800">
+                {phqProgress.previous_score}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Current Score</p>
+              <p className="text-2xl font-bold text-gray-800">
+                {phqProgress.current_score}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-700">
+              <strong>Change:</strong> {phqProgress.change > 0 ? '+' : ''}{phqProgress.change} points
+            </span>
+            <span className={`text-sm font-semibold px-3 py-1 rounded-full ${
+              phqProgress.status === 'Significant improvement' 
+                ? 'bg-emerald-100 text-emerald-700'
+                : phqProgress.status === 'Significant worsening'
+                ? 'bg-red-100 text-red-700'
+                : 'bg-gray-100 text-gray-700'
+            }`}>
+              {phqProgress.status}
+            </span>
+          </div>
+
+          <p className="text-xs text-gray-500 mt-2">
+            {phqProgress.days_between} days between assessments
+          </p>
+        </div>
+      )}
+
+      {/* Overall Trend (All valid PHQs) */}
+      {report?.phq_trend && (
+        <div className="bg-blue-50 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">
+            Overall Trend ({report.phq_trend.num_assessments} Assessments)
+          </h4>
+          
+          <div className="grid grid-cols-2 gap-4 mb-3">
+            <div>
+              <p className="text-xs text-gray-500">First Score</p>
+              <p className="text-2xl font-bold text-gray-800">
+                {report.phq_trend.first_score}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Latest Score</p>
+              <p className="text-2xl font-bold text-gray-800">
+                {report.phq_trend.last_score}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-700">
+                <strong>Total Change:</strong> {report.phq_trend.total_change > 0 ? '+' : ''}{report.phq_trend.total_change} points
+              </span>
+              <span className={`text-sm font-semibold px-3 py-1 rounded-full ${
+                report.phq_trend.trend_direction === 'Improving' 
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : report.phq_trend.trend_direction === 'Worsening'
+                  ? 'bg-red-100 text-red-700'
+                  : 'bg-gray-100 text-gray-700'
+              }`}>
+                {report.phq_trend.trend_direction}
+              </span>
+            </div>
+
+            <p className="text-sm text-gray-700">
+              {report.phq_trend.trend_description}
+            </p>
+
+            {report.phq_trend.pattern && (
+              <p className="text-sm text-blue-700">
+                <strong>Pattern:</strong> {report.phq_trend.pattern}
+              </p>
+            )}
+
+            <p className="text-xs text-gray-500 mt-2">
+              Tracking period: {report.phq_trend.timespan_days} days 
+              (avg {report.phq_trend.avg_change_per_interval > 0 ? '+' : ''}{report.phq_trend.avg_change_per_interval} points per interval)
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
   <div className="bg-white rounded-lg shadow-sm p-6 border-l-4 border-emerald-600">
     <h3 className="text-sm font-semibold text-gray-600 mb-2">

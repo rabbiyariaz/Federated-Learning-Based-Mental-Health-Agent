@@ -139,6 +139,85 @@ def compute_phq_progress(previous, current):
         "remission": remission,
         "days_between": gap_days
     }
+def compute_phq_trend(phq_assessments):
+    """
+    Analyze overall PHQ trend across multiple assessments.
+    Only includes PHQs that are ≥7 days apart.
+    
+    Args:
+        phq_assessments: List of PHQAssessment objects (ordered chronologically)
+    
+    Returns:
+        dict with trend analysis or None if insufficient data
+    """
+    if len(phq_assessments) < 2:
+        return None
+    
+    # Sort by date (oldest first)
+    sorted_phqs = sorted(phq_assessments, key=lambda x: x.submitted_at)
+    
+    # Filter for valid time intervals (≥7 days apart)
+    valid_phqs = [sorted_phqs[0]]  # Always include first
+    
+    for phq in sorted_phqs[1:]:
+        days_since_last = (phq.submitted_at - valid_phqs[-1].submitted_at).days
+        if days_since_last >= 7:
+            valid_phqs.append(phq)
+    
+    # Need at least 2 valid PHQs for trend
+    if len(valid_phqs) < 2:
+        return None
+    
+    scores = [phq.total_score for phq in valid_phqs]
+    
+    # Calculate overall change
+    first_score = scores[0]
+    last_score = scores[-1]
+    total_change = last_score - first_score
+    
+    # Calculate average change per valid interval
+    avg_change = total_change / (len(valid_phqs) - 1)
+    
+    # Determine trend direction
+    if total_change <= -5:
+        trend_direction = "Improving"
+        trend_description = f"Score decreased by {abs(total_change)} points"
+    elif total_change >= 5:
+        trend_direction = "Worsening"
+        trend_description = f"Score increased by {total_change} points"
+    else:
+        trend_direction = "Stable"
+        trend_description = f"Score changed by {total_change:+d} points"
+    
+    # Detect pattern (if ≥3 valid PHQs)
+    pattern = None
+    if len(valid_phqs) >= 3:
+        mid_idx = len(scores) // 2
+        first_half_avg = statistics.mean(scores[:mid_idx+1])
+        second_half_avg = statistics.mean(scores[mid_idx:])
+        
+        if first_half_avg > last_score and scores[0] > first_half_avg:
+            pattern = "Consistent improvement"
+        elif first_half_avg < last_score and scores[0] < first_half_avg:
+            pattern = "Consistent worsening"
+        elif scores[mid_idx] < first_score and scores[mid_idx] < last_score:
+            pattern = "U-shaped (dip then recovery)"
+        elif scores[mid_idx] > first_score and scores[mid_idx] > last_score:
+            pattern = "Inverted U (spike then decline)"
+    
+    return {
+        "num_assessments": len(valid_phqs),
+        "first_score": first_score,
+        "last_score": last_score,
+        "total_change": total_change,
+        "avg_change_per_interval": round(avg_change, 2),
+        "trend_direction": trend_direction,
+        "trend_description": trend_description,
+        "pattern": pattern,
+        "timespan_days": (valid_phqs[-1].submitted_at - valid_phqs[0].submitted_at).days
+    }
+
+
 def generate_weekly_report(user_id, ema_summary, phq_progress=None):
 
     recommendations = []
