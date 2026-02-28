@@ -137,11 +137,21 @@ const buildLineChart = ({ question, label, color }) => {
     [ema]
   );
 
-  const cognitiveData = useMemo(
+  const sleepData = useMemo(
   () =>
     buildLineChart({
       question: 6,
-      label: "Cognitive/Psychomotor (1–5)",
+      label: "Sleep Quality (1–5)",
+      color: "rgb(20,184,166)",
+    }),
+  [ema]
+);
+
+  const cognitiveData = useMemo(
+  () =>
+    buildLineChart({
+      question: "5_severity",
+      label: "Cognitive / Psychomotor (1–5)",
       color: "rgb(20,184,166)",
     }),
   [ema]
@@ -286,10 +296,10 @@ const phqBarData = latestPhq
             </p>
           </div>
 
-          {/* Energy/Sleep Chart */}
+          {/* Energy Chart */}
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Fatigue & Sleep Quality (Recent Trend)
+              Fatigue & Lack of energy (Recent Trend)
             </h2>
             {fatigueData ? (
               <div className="h-64">
@@ -303,7 +313,7 @@ const phqBarData = latestPhq
               </div>
             )}
             <p className="text-xs text-gray-500 mt-3">
-              Fatigue: Lower is better • Sleep: Higher is better
+              Fatigue•  Lower is better
             </p>
           </div>
 
@@ -329,10 +339,10 @@ const phqBarData = latestPhq
           </div>
 
           {/* Cognitive/Psychomotor Chart */}
-          
+
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Cognitive/Psychomotor Symptoms (Recent Trend)
+              Cognitive Symptoms  (Recent Trend)
             </h2>
             {cognitiveData ? (
               <div className="h-64">
@@ -341,12 +351,37 @@ const phqBarData = latestPhq
             ) : (
               <div className="h-64 flex items-center justify-center bg-gray-50 rounded">
                 <p className="text-gray-500 text-sm">
-                  No cognitive/psychomotor data available yet
+                  No cognitive data available yet
                 </p>
               </div>
             )}
             <p className="text-xs text-gray-500 mt-3">
-              Racing thoughts or restlessness severity • Lower scores are better
+              Cognitive/Psychomotor• Lower is better
+            </p>
+          </div>
+
+          
+          {/* sleep Chart */}
+          
+          
+
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">
+              Sleep Quality (Recent Trend)
+            </h2>
+            {sleepData ? (
+              <div className="h-64">
+                <Line data={sleepData} options={lineOptions} />
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center bg-gray-50 rounded">
+                <p className="text-gray-500 text-sm">
+                  No sleep quality data available yet
+                </p>
+              </div>
+            )}
+            <p className="text-xs text-gray-500 mt-3">
+              Sleep• Higher is better
             </p>
           </div>
 
