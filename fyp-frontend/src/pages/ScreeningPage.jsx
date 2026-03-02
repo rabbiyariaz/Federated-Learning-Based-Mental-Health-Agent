@@ -2,7 +2,7 @@ import { useState } from 'react';
 import MoodQuestions from '../components/MoodQuestions';
 import ScreeningResults from '../components/ScreeningResults';
 import { saveHistoryEntry } from '../utils/storage';
-import { predictText } from '../api/backend';
+import { predictText, submitTextEntry } from '../api/backend';
 
 function ScreeningPage() {
   const [text, setText] = useState('');
@@ -10,6 +10,7 @@ function ScreeningPage() {
   const [results, setResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [savingToDb, setSavingToDb] = useState(false);
 
 
 
@@ -38,14 +39,26 @@ function ScreeningPage() {
         data: {
           text: text.trim(),
           textSnippet: text.trim().substring(0, 100) + (text.trim().length > 100 ? '...' : ''),
-          emotion: backendResult.emotion,
-          phq8_score: backendResult.phq8_score,
-          phq8_binary: backendResult.phq8_binary,
+          primary_emotion: backendResult.primary_emotion,
+          dominant_emotions: backendResult.dominant_emotions,
+          risk_level: backendResult.risk_level,
           emotion_probs: backendResult.emotion_probs,
           moodData: moodData,
         },
       };
       saveHistoryEntry(historyEntry);
+
+      // Save text entry to database (for weekly risk assessment)
+      setSavingToDb(true);
+      try {
+        await submitTextEntry(text.trim());
+        console.log('Text entry saved to database successfully');
+      } catch (dbErr) {
+        // Don't fail the entire flow if database save fails
+        console.warn('Failed to save text to database:', dbErr.message);
+      } finally {
+        setSavingToDb(false);
+      }
     } catch (err) {
       setError(err.message || 'An error occurred while analyzing your text. Please try again.');
       console.error('Analysis error:', err);
@@ -106,16 +119,16 @@ function ScreeningPage() {
         <div className="flex gap-4">
           <button
             type="submit"
-            disabled={isLoading || !text.trim()}
+            disabled={isLoading || savingToDb || !text.trim()}
             className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-colors"
           >
-            {isLoading ? (
+            {isLoading || savingToDb ? (
               <span className="flex items-center justify-center">
                 <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Analyzing...
+                {savingToDb ? 'Saving...' : 'Analyzing...'}
               </span>
             ) : (
               'Analyze Text'
@@ -135,51 +148,53 @@ function ScreeningPage() {
       </form>
 
       {/* Results */}
-      {isLoading && (
+      {(isLoading || savingToDb) && (
         <div className="mt-6 text-center text-slate-300">
-          Analyzing...
+          {savingToDb ? 'Saving text entry for weekly analysis...' : 'Analyzing...'}
         </div>
       )}
 
       {results && (
         <div className="mt-6 bg-slate-800 border border-slate-700 rounded-lg p-6 space-y-4">
-          <h2 className="text-2xl font-bold text-emerald-700 mb-4">Analysis Results</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-emerald-700">Analysis Results</h2>
+            {!savingToDb && (
+              <span className="text-sm text-emerald-400 flex items-center gap-2">
+                <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                Saved to database
+              </span>
+            )}
+          </div>
           
           <div className="space-y-3">
             <div>
-              <span className="text-slate-400 font-medium">Emotion: </span>
-              <span className="text-slate-100">{results.emotion}</span>
+              <span className="text-slate-400 font-medium">Primary Emotion: </span>
+              <span className="text-slate-100">{results.primary_emotion}</span>
             </div>
             
-            <div>
-              <span className="text-slate-400 font-medium">PHQ-8 Score: </span>
-              <span className="text-slate-100">{results.phq8_score}</span>
-            </div>
-            
-            <div>
-              <span className="text-slate-400 font-medium">PHQ-8 Binary: </span>
-              <span className="text-slate-100">{results.phq8_binary ? 'Yes' : 'No'}</span>
-            </div>
+             
+             {results.dominant_emotions &&
+  results.dominant_emotions.filter(
+    (emotion) => emotion !== results.primary_emotion
+  ).length > 0 && (
+    <div>
+      <span className="text-slate-400 font-medium">Also Detected: </span>
+      <span className="text-slate-100 capitalize">
+        {results.dominant_emotions
+          .filter((emotion) => emotion !== results.primary_emotion)
+          .join(", ")}
+      </span>
+    </div>
+)}
 
-            {results.emotion_probs && (
-              <div>
-                <span className="text-slate-400 font-medium block mb-2">Emotion Probabilities: </span>
-                <div className="bg-slate-900 rounded p-3">
-                  {typeof results.emotion_probs === 'object' ? (
-                    <ul className="space-y-1">
-                      {Object.entries(results.emotion_probs).map(([emotion, prob]) => (
-                        <li key={emotion} className="text-slate-200">
-                          <span className="capitalize">{emotion}: </span>
-                          <span className="text-emerald-600">{(typeof prob === 'number' ? (prob * 100).toFixed(1) : prob)}%</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-slate-200">{JSON.stringify(results.emotion_probs)}</p>
-                  )}
-                </div>
-              </div>
-            )}
+ 
+<div>
+  <span className="text-slate-400 font-medium">Text-Based Risk Level: </span>
+  <span className="text-slate-100">{results.text_risk_level}</span>
+</div>
+            
           </div>
         </div>
       )}

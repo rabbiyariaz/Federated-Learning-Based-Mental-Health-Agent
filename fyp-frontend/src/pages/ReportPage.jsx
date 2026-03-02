@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo  } from 'react';
 import { getPHQSeverityLabel } from '../utils/scoring';
-import { fetchReport, getOrCreateToken } from "../api/backend";
+import { fetchReport, fetchWeeklyTextRisk, getOrCreateToken } from "../api/backend";
 
 
 export default function ReportPage() {
   const [report, setReport] = useState(null);
+  const [weeklyTextRisk, setWeeklyTextRisk] = useState(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [reportGenerated, setReportGenerated] = useState(false);
@@ -39,10 +40,17 @@ const delta = phqProgress?.change ?? null;
     async function loadReport() {
       try {
         const token = await getOrCreateToken();
-        const data = await fetchReport(controller.signal);
+        const [reportData, weeklyRiskData] = await Promise.all([
+          fetchReport(controller.signal),
+          fetchWeeklyTextRisk(controller.signal).catch(err => {
+            console.warn("Weekly text risk fetch failed:", err);
+            return null; // Don't fail the whole page if weekly risk fails
+          })
+        ]);
 
         if (isMounted) {
-          setReport(data);
+          setReport(reportData);
+          setWeeklyTextRisk(weeklyRiskData);
         }
       } catch (err) {
   if (err.name === "AbortError") {
@@ -126,7 +134,18 @@ DAILY CHECK-INS
 Days Logged (Recent Week): ${completed} / ${total}
 Completion Rate: ${percentage}%
 
-WEEKLY MOOD SUMMARY
+${weeklyTextRisk && weeklyTextRisk.weekly_risk_level !== 'No Data' ? `
+WEEKLY TEXT RISK ASSESSMENT
+-----------------------------
+Risk Level: ${weeklyTextRisk.weekly_risk_level}
+Reflections Analyzed: ${weeklyTextRisk.reflection_count}
+${weeklyTextRisk.message}
+
+Note: This assessment uses an LSTM aggregator to analyze your text reflections
+over the past 7 days and classify your mental health risk into one of three
+categories: Low, Moderate, or Elevated.
+
+` : ''}WEEKLY MOOD SUMMARY
 --------------------
 Average Mood Index: ${report?.ema_summary?.weekly_avg_depression ?? 'N/A'}
 Mood Trend: ${report?.ema_summary?.trend_depression ?? 'N/A'}
@@ -229,6 +248,76 @@ Generated on: ${new Date().toLocaleString()}
           </div>
         </div>
 
+{/* Weekly Text Risk Assessment */}
+{weeklyTextRisk && weeklyTextRisk.weekly_risk_level !== 'No Data' && weeklyTextRisk.weekly_risk_level !== 'Insufficient Data' && (
+  <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg shadow-md p-6 mb-8 border-2 border-purple-200">
+    <div className="flex items-center gap-3 mb-4">
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-purple-600" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+        <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
+      </svg>
+      <h3 className="text-xl font-bold text-gray-800">
+        Weekly Text Risk Assessment
+      </h3>
+    </div>
+
+    <div className="flex items-center gap-6 mb-4">
+      <div className="flex-1">
+        <p className="text-sm text-gray-600 mb-2">Risk Level</p>
+        <div className={`inline-block px-6 py-3 rounded-lg font-bold text-lg ${
+          weeklyTextRisk.weekly_risk_level === 'Low' 
+            ? 'bg-emerald-500 text-white'
+            : weeklyTextRisk.weekly_risk_level === 'Moderate'
+            ? 'bg-amber-500 text-white'
+            : weeklyTextRisk.weekly_risk_level === 'Elevated'
+            ? 'bg-red-500 text-white'
+            : 'bg-gray-300 text-gray-700'
+        }`}>
+          {weeklyTextRisk.weekly_risk_level}
+        </div>
+      </div>
+
+      <div className="flex-1">
+        <p className="text-sm text-gray-600 mb-2">Reflections Analyzed</p>
+        <p className="text-4xl font-bold text-purple-700">
+          {weeklyTextRisk.reflection_count}
+        </p>
+        <p className="text-xs text-gray-500 mt-1">from last 7 days</p>
+      </div>
+    </div>
+
+    <div className="bg-white rounded-lg p-4 mt-4">
+      <p className="text-sm text-gray-700">
+        <strong className="text-purple-700">Analysis:</strong> {weeklyTextRisk.message}
+      </p>
+      {weeklyTextRisk.risk_score !== undefined && (
+        <p className="text-xs text-gray-600 mt-2">
+          <strong>Risk Score:</strong> {weeklyTextRisk.risk_score} 
+          <span className="text-gray-500"> (0 = very low risk, 1 = very high risk)</span>
+        </p>
+      )}
+     
+    </div>
+  </div>
+)}
+
+{/* Show message if insufficient data */}
+{weeklyTextRisk && (weeklyTextRisk.weekly_risk_level === 'Insufficient Data' || weeklyTextRisk.weekly_risk_level === 'No Data') && (
+  <div className="bg-blue-50 rounded-lg shadow-sm p-6 mb-8 border border-blue-200">
+    <div className="flex items-center gap-3">
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <div>
+        <h4 className="font-semibold text-blue-800">Weekly Text Risk Assessment</h4>
+        <p className="text-sm text-blue-700 mt-1">
+          {weeklyTextRisk.message} Submit at least 3 text reflections to enable weekly risk analysis.
+        </p>
+      </div>
+    </div>
+  </div>
+)}
+
 {report?.ema_summary && (
   <div className="bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-200">
     <h3 className="text-lg font-semibold text-gray-800 mb-4">
@@ -330,7 +419,7 @@ Generated on: ${new Date().toLocaleString()}
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Latest Score</p>
+              <p className="text-xs text-gray-500">Score</p>
               <p className="text-2xl font-bold text-gray-800">
                 {report.phq_trend.last_score}
               </p>

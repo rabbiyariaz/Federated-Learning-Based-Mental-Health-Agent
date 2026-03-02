@@ -2,6 +2,8 @@ from sqlalchemy import Column, Integer, String, DateTime, JSON, Date, UniqueCons
 from datetime import datetime, timedelta, timezone
 from app.database import Base
 from sqlalchemy import ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy.sql import func
 
 
 class Session(Base):
@@ -37,4 +39,31 @@ class EMAEntry(Base):
     submitted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     __table_args__ = (
         UniqueConstraint("user_id", "date_submitted", name="uq_ema_user_date"),
+    )
+
+
+
+class TextEntry(Base):
+
+    __tablename__ = "text_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    user_id = Column(
+        String,
+        ForeignKey("sessions.session_id"),   # reference actual user table
+        nullable=False,
+        index=True
+    )
+
+    text = Column(
+        Text,
+        nullable=False
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True
     )

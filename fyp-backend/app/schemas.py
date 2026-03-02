@@ -28,3 +28,17 @@ class PHQCreate(BaseModel):
 class EMACreate(BaseModel):
     date_submitted: date
     responses: Dict[str, Union[int, str]]
+
+
+class TextEntryCreate(BaseModel):
+    text: str
+
+
+class TextEntryResponse(BaseModel):
+    id: int
+    user_id: str
+    text: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

@@ -1,12 +1,26 @@
 from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.models import EMAEntry, PHQAssessment
+from app.models import EMAEntry, PHQAssessment, TextEntry
 from app.services.analysis_service import compute_ema_summary, compute_phq_trend
 from app.database import get_db
 from app.auth import verify_token
+from ml.daic_model import DAICModel
+from ml.ml_services.weekly_report_service import WeeklyReportService
 
 router = APIRouter(prefix="/report")
+
+# Initialize services (lazy loading)
+_weekly_service = None
+
+def get_weekly_service():
+    """Lazy-load the weekly report service"""
+    global _weekly_service
+    if _weekly_service is None:
+        daic_model = DAICModel()
+        daic_model.load()
+        _weekly_service = WeeklyReportService(daic_model)
+    return _weekly_service
 
 
 @router.get("")
@@ -71,6 +85,7 @@ def generate_report(
 
     # 4️⃣ PHQ Trend Analysis (across all valid PHQs ≥7 days apart)
     phq_trend = compute_phq_trend(phqs)
+    print(len(ema_entries))
     
     return {
         "latest_phq": {
@@ -90,3 +105,31 @@ def generate_report(
     for p in phqs
 ]
     }
+
+
+@router.get("/weekly-text-risk")
+def get_weekly_text_risk(
+    session_id: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """
+    Get weekly text risk assessment using LSTM aggregator.
+    
+    Analyzes the user's text reflections from the last 7 days and returns
+    one of three risk levels: Low, Moderate, or Elevated.
+    
+    Returns:
+        - weekly_risk_level: One of ["Low", "Moderate", "Elevated", "Insufficient Data", "No Data"]
+        - reflection_count: Number of reflections analyzed
+        - message: Descriptive message about the analysis
+    """
+    weekly_service = get_weekly_service()
+    
+    try:
+        result = weekly_service.generate_for_user(db, session_id)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating weekly text risk report: {str(e)}"
+        )

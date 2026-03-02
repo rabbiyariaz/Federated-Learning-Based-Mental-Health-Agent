@@ -1,4 +1,6 @@
-const BASE_URL = "http://127.0.0.1:8000";
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000")
+  .trim()
+  .replace(/\/+$/, "");
 
 
 
@@ -166,6 +168,44 @@ export async function fetchEMATodayStatus() {
 }
 
 /* -------------------------
+   Text Entry API
+-------------------------- */
+
+export async function submitTextEntry(text) {
+  let token = await getOrCreateToken();
+
+  let res = await fetch(`${BASE_URL}/text-entries`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    },
+    body: JSON.stringify({ text })
+  });
+
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    token = await getOrCreateToken();
+
+    res = await fetch(`${BASE_URL}/text-entries`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({ text })
+    });
+  }
+
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(`Text entry submission failed: ${res.status} ${msg}`);
+  }
+
+  return res.json();
+}
+
+/* -------------------------
    Report API
 -------------------------- */
 export async function fetchReport(signal) {
@@ -194,6 +234,37 @@ export async function fetchReport(signal) {
   if (!res.ok) {
     const msg = await res.text();
     throw new Error(`Report fetch failed: ${res.status} ${msg}`);
+  }
+
+  return res.json();
+}
+
+export async function fetchWeeklyTextRisk(signal) {
+  let token = await getOrCreateToken();
+
+  let res = await fetch(`${BASE_URL}/report/weekly-text-risk`, {
+    signal,
+    headers: {
+      "Authorization": `Bearer ${token}`
+    }
+  });
+
+  // If token expired → clear + regenerate once
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    token = await getOrCreateToken();
+
+    res = await fetch(`${BASE_URL}/report/weekly-text-risk`, {
+      signal,
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
+  }
+
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(`Weekly text risk fetch failed: ${res.status} ${msg}`);
   }
 
   return res.json();

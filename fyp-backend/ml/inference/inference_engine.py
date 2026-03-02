@@ -2,6 +2,8 @@
 from ..daic_model import DAICModel
 from ..goemotions_model import GoEmotionsModel
 
+
+
 class InferenceService:
     def __init__(self):
         self.models = {
@@ -13,13 +15,24 @@ class InferenceService:
         for model in self.models.values():
             model.load()
 
+    
     def run(self, text: str) -> dict:
         emotion = self.models["emotion"].predict(text)
-        phq = self.models["phq"].predict(text)
+        daic = self.models["phq"].predict(text)
+
+
+        if daic.get("crisis_detected"):
+            return {
+                "primary_emotion": "distress",
+                "dominant_emotions": [],
+                "text_risk_level": daic["risk_level"],
+                "risk_score": daic["risk_score"],
+            }
+
 
         return {
-            "emotion": emotion["emotion"],
-            "emotion_probs": emotion["emotion_probs"],
-            "phq8_score": phq["phq8_score"],
-            "phq8_binary": phq["phq8_binary"],
+            "primary_emotion": emotion["primary_emotion"],
+            "dominant_emotions": emotion["dominant_emotions"],
+            "text_risk_level": daic["risk_level"],
+            "risk_score": daic["risk_score"],
         }
