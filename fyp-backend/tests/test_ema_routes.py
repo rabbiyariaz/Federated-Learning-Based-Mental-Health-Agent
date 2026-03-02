@@ -1,9 +1,8 @@
 from datetime import date, timedelta
 
-def test_submit_ema_valid(client):
+def test_submit_ema_valid(client, auth_context):
     """Test submitting valid daily EMA assessment"""
     payload = {
-        "user_id": "test-user-ema-123",
         "date_submitted": str(date.today()),
         "responses": {
             "1": 3,
@@ -16,23 +15,22 @@ def test_submit_ema_valid(client):
         }
     }
     
-    response = client.post("/ema", json=payload)
+    response = client.post("/ema", json=payload, headers=auth_context["headers"])
     
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
-    assert data["user_id"] == "test-user-ema-123"
+    assert data["date"] == str(date.today())
 
 
-def test_submit_ema_all_questions(client):
+def test_submit_ema_all_questions(client, auth_context):
     """Test EMA with all question types"""
     payload = {
-        "user_id": "test-user-all",
         "date_submitted": str(date.today()),
         "responses": {
             "1": 4,  # Depression
             "2": 3,  # Anxiety
-            "3": 5,  # Sleep quality
+            "3": 4,  # Sleep quality
             "4": 1,  # Sleep duration
             "5_severity": 4,  # Sleep problem severity
             "5_type": "My mind was frequently occupied by racing or negative thoughts",  # Sleep problem type
@@ -40,17 +38,15 @@ def test_submit_ema_all_questions(client):
         }
     }
     
-    response = client.post("/ema", json=payload)
+    response = client.post("/ema", json=payload, headers=auth_context["headers"])
     assert response.status_code == 200
 
 
-def test_submit_ema_duplicate_date(client):
+def test_submit_ema_duplicate_date(client, auth_context):
     """Test that duplicate EMA submission for same date is rejected"""
-    user_id = "test-user-duplicate"
     today_date = str(date.today())
     
     payload = {
-        "user_id": user_id,
         "date_submitted": today_date,
         "responses": {
             "1": 2, "2": 2, "3": 2, "4": 2,
@@ -59,21 +55,18 @@ def test_submit_ema_duplicate_date(client):
     }
     
     # First submission should succeed
-    response1 = client.post("/ema", json=payload)
+    response1 = client.post("/ema", json=payload, headers=auth_context["headers"])
     assert response1.status_code == 200
     
     # Second submission for same date should fail
-    response2 = client.post("/ema", json=payload)
-    assert response2.status_code in [400, 409]
+    response2 = client.post("/ema", json=payload, headers=auth_context["headers"])
+    assert response2.status_code == 400
 
 
-def test_submit_ema_different_dates(client):
+def test_submit_ema_different_dates(client, auth_context):
     """Test submitting EMA for different dates"""
-    user_id = "test-user-multi-date"
-    
     for i in range(3):
         payload = {
-            "user_id": user_id,
             "date_submitted": str(date.today() - timedelta(days=i)),
             "responses": {
                 "1": 2 + i % 2,
@@ -85,15 +78,14 @@ def test_submit_ema_different_dates(client):
                 "6": 3
             }
         }
-        
-        response = client.post("/ema", json=payload)
+
+        response = client.post("/ema", json=payload, headers=auth_context["headers"])
         assert response.status_code == 200
 
 
-def test_submit_ema_missing_responses(client):
+def test_submit_ema_missing_responses(client, auth_context):
     """Test that missing required responses are rejected"""
     payload = {
-        "user_id": "test-user-missing",
         "date_submitted": str(date.today()),
         "responses": {
             "1": 2,
@@ -102,16 +94,13 @@ def test_submit_ema_missing_responses(client):
         }
     }
     
-    response = client.post("/ema", json=payload)
-    print(f"Response status code: {response.status_code}")
-    print(f"Response text: {response.text}")
-    assert response.status_code in [400, 422]
+    response = client.post("/ema", json=payload, headers=auth_context["headers"])
+    assert response.status_code == 400
 
 
-def test_submit_ema_invalid_response_values(client):
+def test_submit_ema_invalid_response_values(client, auth_context):
     """Test that invalid response values are rejected"""
     payload = {
-        "user_id": "test-user-invalid",
         "date_submitted": str(date.today()),
         "responses": {
             "1": 10,  # Out of range
@@ -124,14 +113,12 @@ def test_submit_ema_invalid_response_values(client):
         }
     }
     
-    response = client.post("/ema", json=payload)
-    print(f"Response status code: {response.status_code}")
-    print(f"Response text: {response.text}")
-    assert response.status_code in [400, 422]
+    response = client.post("/ema", json=payload, headers=auth_context["headers"])
+    assert response.status_code == 400
 
 
 def test_submit_ema_missing_user_id(client):
-    """Test that missing user_id is rejected"""
+    """Test that missing auth token is rejected"""
     payload = {
         "date_submitted": str(date.today()),
         "responses": {
@@ -141,13 +128,12 @@ def test_submit_ema_missing_user_id(client):
     }
     
     response = client.post("/ema", json=payload)
-    assert response.status_code == 422
+    assert response.status_code in [401, 403]
 
 
-def test_submit_ema_invalid_date_format(client):
+def test_submit_ema_invalid_date_format(client, auth_context):
     """Test that invalid date format is rejected"""
     payload = {
-        "user_id": "test-user-date",
         "date_submitted": "invalid-date",
         "responses": {
             "1": 2, "2": 2, "3": 3, "4": 2,
@@ -155,16 +141,15 @@ def test_submit_ema_invalid_date_format(client):
         }
     }
     
-    response = client.post("/ema", json=payload)
-    assert response.status_code in [400, 422]
+    response = client.post("/ema", json=payload, headers=auth_context["headers"])
+    assert response.status_code == 422
 
 
-def test_submit_ema_future_date(client):
+def test_submit_ema_future_date(client, auth_context):
     """Test that future dates are rejected"""
     future_date = str(date.today() + timedelta(days=7))
     
     payload = {
-        "user_id": "test-user-future",
         "date_submitted": future_date,
         "responses": {
             "1": 2, "2": 2, "3": 3, "4": 2,
@@ -172,34 +157,17 @@ def test_submit_ema_future_date(client):
         }
     }
     
-    response = client.post("/ema", json=payload)
-    # Depending on validation, might be accepted or rejected
-    assert response.status_code in [200, 400, 422]
+    response = client.post("/ema", json=payload, headers=auth_context["headers"])
+    assert response.status_code == 400
 
 
-def test_get_ema_history(client):
-    """Test retrieving EMA history for a user"""
-    user_id = "test-user-history"
-    
-    # Submit multiple EMAs
-    for i in range(7):
-        payload = {
-            "user_id": user_id,
-            "date_submitted": str(date.today() - timedelta(days=i)),
-            "responses": {
-                "1": 2, "2": 2, "3": 3, "4": 2,
-                "5_severity": 2, "5_type": "My mind was frequently occupied by racing or negative thoughts", "6": 3
-            }
-        }
-        client.post("/ema", json=payload)
-    
-    # Get history
-    response = client.get(f"/ema/history/{user_id}")
-    
-    if response.status_code == 200:
-        data = response.json()
-        assert isinstance(data, list)
-        assert len(data) >= 7
+def test_get_today_status(client, auth_context):
+    """Test retrieving today's EMA submission status"""
+    response = client.get("/ema/today-status", headers=auth_context["headers"])
+    assert response.status_code == 200
+    data = response.json()
+    assert data["date"] == str(date.today())
+    assert data["submitted"] is False
 
 
 # def test_submit_ema_special_sleep_types(client):

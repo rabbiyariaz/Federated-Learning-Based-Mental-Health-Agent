@@ -23,6 +23,8 @@ def _load_model():
     return _model, _tokenizer
 
 
+
+
 def predict_emotion(text: str) -> dict:
     """
     Predict emotion from text using the GoEmotions model.

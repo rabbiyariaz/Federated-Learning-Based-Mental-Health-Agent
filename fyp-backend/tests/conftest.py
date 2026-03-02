@@ -3,8 +3,10 @@ from sqlalchemy.orm import sessionmaker
 from app.database import Base
 from app.main import app
 from app.database import get_db
+from app.auth import SECRET_KEY, ALGORITHM
 import pytest
 from fastapi.testclient import TestClient
+from jose import jwt
 
 from sqlalchemy.pool import StaticPool
 
@@ -45,3 +47,19 @@ def client():
 
     Base.metadata.drop_all(bind=engine)
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(scope="function")
+def auth_context(client):
+    response = client.post("/api/sessions/create")
+    assert response.status_code == 200
+
+    token = response.json()["access_token"]
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    session_id = payload["session_id"]
+
+    return {
+        "token": token,
+        "session_id": session_id,
+        "headers": {"Authorization": f"Bearer {token}"},
+    }

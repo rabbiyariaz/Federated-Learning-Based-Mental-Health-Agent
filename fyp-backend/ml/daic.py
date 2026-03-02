@@ -212,12 +212,12 @@ def load_daic():
     return _tokenizer, _model
 
 
+
 def predict_daic_session(text: str):
     text = (text or "").strip()
     if not text:
         raise ValueError("Empty text")
 
-    # 🚨 CRISIS OVERRIDE
     if contains_crisis_content(text):
         print("[CRISIS DETECTED] Returning ELEVATED risk")
         return {
@@ -289,82 +289,36 @@ def predict_daic_session(text: str):
         "risk_score": round(prob, 4),
         "emotion": final_emotion
     }
-def _analyze_sentiment_override(reflections: list[str], initial_risk: str, prob: float) -> tuple[str, float]:
-    """
-    Analyze sentiment across reflections to detect false positives.
-    If reflections are predominantly positive, override the risk level.
-    """
-    POSITIVE_EMOTIONS = {'joy', 'love', 'gratitude', 'admiration', 'excitement', 'optimism', 'amusement', 'pride', 'approval', 'caring', 'desire', 'relief'}
-    NEGATIVE_EMOTIONS = {'sadness', 'anger', 'fear', 'grief', 'disappointment', 'disgust', 'annoyance', 'nervousness', 'embarrassment', 'remorse'}
-    
-    positive_count = 0
-    negative_count = 0
-    neutral_count = 0
-    
-    for reflection in reflections:
-        try:
-            emotion_result = predict_emotion(reflection)
-            primary = emotion_result.get('primary_emotion', '').lower()
-            
-            if primary in POSITIVE_EMOTIONS:
-                positive_count += 1
-            elif primary in NEGATIVE_EMOTIONS:
-                negative_count += 1
-            else:
-                neutral_count += 1
-        except Exception as e:
-            print(f"[SENTIMENT ANALYSIS] Warning: Could not analyze emotion: {e}")
-            neutral_count += 1
-    
-    total = len(reflections)
-    positive_ratio = positive_count / total if total > 0 else 0
-    negative_ratio = negative_count / total if total > 0 else 0
-    
-    print(f"[SENTIMENT ANALYSIS] Positive: {positive_count}/{total} ({positive_ratio:.2%}), Negative: {negative_count}/{total} ({negative_ratio:.2%})")
-    
 
-
-
-    # Override logic: If majority positive and low risk score, force Low risk
-    if positive_ratio >= 0.75 and prob < 0.55:
-        adjusted_prob = prob * 0.7  # Reduce risk score by 30%
-        print(f"[SENTIMENT OVERRIDE] Strong positive sentiment detected. Adjusting score: {prob:.4f} → {adjusted_prob:.4f}")
-        return "Low", adjusted_prob
-    
-    # If moderately positive (50-75%) and score near threshold, nudge to Low
-    if positive_ratio >= 0.50 and prob < 0.50:
-        adjusted_prob = prob * 0.85
-        print(f"[SENTIMENT OVERRIDE] Moderate positive sentiment. Adjusting score: {prob:.4f} → {adjusted_prob:.4f}")
-        return "Low", adjusted_prob
-    
-    return initial_risk, prob
 
 
 def predict_daic_weekly(reflections: list[str]):
-    reflections = [r.strip() for r in reflections if r.strip()]
 
-    # Use only most recent 30 reflections
+    reflections = [r.strip() for r in reflections if r.strip()]
     reflections = reflections[-30:]
 
     if len(reflections) < 3:
         return {"weekly_risk_level": "Insufficient Data"}
 
-    # 🚨 Crisis override
+    # 1️⃣ Crisis Override
     has_crisis, crisis_reflections = check_reflections_for_crisis(reflections)
     if has_crisis:
         return {
             "weekly_risk_level": "Elevated",
             "risk_score": 0.95,
             "crisis_detected": True,
-            "crisis_count": len(crisis_reflections)
+            "crisis_count": len(crisis_reflections),
+            "explanation": ["Crisis phrases detected"]
         }
 
     tokenizer, model = load_daic()
 
-    individual_scores = []
+    scores = []
+    emotions = []
 
     with torch.no_grad():
         for reflection in reflections:
+
             enc = tokenizer(
                 reflection,
                 truncation=True,
@@ -379,13 +333,83 @@ def predict_daic_weekly(reflections: list[str]):
             )
 
             logit = model.phq_bin_head(pooled).squeeze(-1)
-            prob = float(torch.sigmoid(logit).cpu().item())
-            individual_scores.append(prob)
 
-    # Average score
-    prob = sum(individual_scores) / len(individual_scores)
+            # ✅ Temperature scaling (consistent with session)
+            scaled = logit / 1.8
+            prob_i = float(torch.sigmoid(scaled).cpu().item())
 
-    # Initial risk classification
+            scores.append(prob_i)
+
+            emotion = predict_emotion(reflection).get(
+                "primary_emotion", ""
+            ).lower()
+
+            emotions.append(emotion)
+
+    # 2️⃣ Core Aggregation
+    prob_mean = sum(scores) / len(scores)
+    prob_max = max(scores)
+    prob_recent = scores[-1]
+
+    prob = (
+        0.5 * prob_recent +
+        0.3 * prob_mean +
+        0.2 * prob_max
+    )
+
+    explanation_flags = []
+
+    if prob_max > 0.90:
+        prob = max(prob, 0.80)
+        explanation_flags.append("Severe reflection spike detected")
+    elif prob_max > 0.80:
+        prob = max(prob, 0.70)
+        explanation_flags.append("High-risk reflection spike detected")
+
+
+    # 3️⃣ Robust Trend Detection
+    third = max(len(scores) // 3, 1)
+    early_mean = sum(scores[:third]) / third
+    late_mean = sum(scores[-third:]) / third
+    slope = late_mean - early_mean
+
+    if slope > 0.15:
+        prob += 0.05
+        explanation_flags.append("Worsening trend detected")
+
+    if len(scores) >= 2 and (scores[-1] - scores[-2]) > 0.25:
+        prob += 0.06
+        explanation_flags.append("Sudden recent escalation detected")
+
+    # 4️⃣ Sentiment Modulation (Conservative)
+    POSITIVE = {'joy','love','gratitude','admiration','excitement',
+                'optimism','amusement','pride','approval','caring',
+                'desire','relief'}
+
+    NEGATIVE = {'sadness','anger','fear','grief','disappointment',
+                'disgust','annoyance','nervousness','embarrassment','remorse'}
+
+    total = len(emotions)
+    positive_ratio = sum(e in POSITIVE for e in emotions) / total
+    negative_ratio = sum(e in NEGATIVE for e in emotions) / total
+
+    if negative_ratio >= 0.70:
+        prob += 0.07
+        explanation_flags.append("Predominantly negative tone")
+
+    # Very mild dampening only if clearly safe zone
+    if positive_ratio >= 0.75 and prob < 0.50:
+        prob *= 0.95
+        explanation_flags.append("Predominantly positive tone")
+
+    # 5️⃣ Data Strength Weighting
+    data_strength = min(len(reflections) / 30, 1.0)
+    prob *= (0.85 + 0.15 * data_strength)
+
+    # 6️⃣ Clamp
+    prob = max(0.0, min(1.0, prob))
+
+    # 7️⃣ Stable Risk Bands (consistent everywhere)
     if prob < 0.45:
         risk = "Low"
     elif prob < 0.75:
@@ -393,13 +417,131 @@ def predict_daic_weekly(reflections: list[str]):
     else:
         risk = "Elevated"
 
-# Sentiment correction
-    risk, prob = _analyze_sentiment_override(reflections, risk, prob)
-
     return {
         "weekly_risk_level": risk,
-        "risk_score": round(prob, 4)
+        "risk_score": round(prob, 4),
+        "reflections_analyzed": len(reflections),
+        "max_reflection_score": round(prob_max, 4),
+        "trend_slope": round(slope, 4),
+        "positive_ratio": round(positive_ratio, 2),
+        "negative_ratio": round(negative_ratio, 2),
+        "explanation": explanation_flags,
+        "crisis_detected": False
     }
+
+
+# def _analyze_sentiment_override(reflections: list[str], initial_risk: str, prob: float) -> tuple[str, float]:
+#     """
+#     Analyze sentiment across reflections to detect false positives.
+#     If reflections are predominantly positive, override the risk level.
+#     """
+#     POSITIVE_EMOTIONS = {'joy', 'love', 'gratitude', 'admiration', 'excitement', 'optimism', 'amusement', 'pride', 'approval', 'caring', 'desire', 'relief'}
+#     NEGATIVE_EMOTIONS = {'sadness', 'anger', 'fear', 'grief', 'disappointment', 'disgust', 'annoyance', 'nervousness', 'embarrassment', 'remorse'}
+    
+#     positive_count = 0
+#     negative_count = 0
+#     neutral_count = 0
+    
+#     for reflection in reflections:
+#         try:
+#             emotion_result = predict_emotion(reflection)
+#             primary = emotion_result.get('primary_emotion', '').lower()
+            
+#             if primary in POSITIVE_EMOTIONS:
+#                 positive_count += 1
+#             elif primary in NEGATIVE_EMOTIONS:
+#                 negative_count += 1
+#             else:
+#                 neutral_count += 1
+#         except Exception as e:
+#             print(f"[SENTIMENT ANALYSIS] Warning: Could not analyze emotion: {e}")
+#             neutral_count += 1
+    
+#     total = len(reflections)
+#     positive_ratio = positive_count / total if total > 0 else 0
+#     negative_ratio = negative_count / total if total > 0 else 0
+    
+#     print(f"[SENTIMENT ANALYSIS] Positive: {positive_count}/{total} ({positive_ratio:.2%}), Negative: {negative_count}/{total} ({negative_ratio:.2%})")
+    
+
+
+
+#     # Override logic: If majority positive and low risk score, force Low risk
+#     if positive_ratio >= 0.75 and prob < 0.55:
+#         adjusted_prob = prob * 0.7  # Reduce risk score by 30%
+#         print(f"[SENTIMENT OVERRIDE] Strong positive sentiment detected. Adjusting score: {prob:.4f} → {adjusted_prob:.4f}")
+#         return "Low", adjusted_prob
+    
+#     # If moderately positive (50-75%) and score near threshold, nudge to Low
+#     if positive_ratio >= 0.50 and prob < 0.50:
+#         adjusted_prob = prob * 0.85
+#         print(f"[SENTIMENT OVERRIDE] Moderate positive sentiment. Adjusting score: {prob:.4f} → {adjusted_prob:.4f}")
+#         return "Low", adjusted_prob
+    
+#     return initial_risk, prob
+
+
+
+# def predict_daic_weekly(reflections: list[str]):
+#     reflections = [r.strip() for r in reflections if r.strip()]
+
+#     # Use only most recent 30 reflections
+#     reflections = reflections[-30:]
+
+#     if len(reflections) < 3:
+#         return {"weekly_risk_level": "Insufficient Data"}
+
+#     # 🚨 Crisis override
+#     has_crisis, crisis_reflections = check_reflections_for_crisis(reflections)
+#     if has_crisis:
+#         return {
+#             "weekly_risk_level": "Elevated",
+#             "risk_score": 0.95,
+#             "crisis_detected": True,
+#             "crisis_count": len(crisis_reflections)
+#         }
+
+#     tokenizer, model = load_daic()
+
+#     individual_scores = []
+
+#     with torch.no_grad():
+#         for reflection in reflections:
+#             enc = tokenizer(
+#                 reflection,
+#                 truncation=True,
+#                 max_length=ModelConfig.DAIC_MAX_SEQ_LEN,
+#                 padding=True,
+#                 return_tensors="pt",
+#             )
+
+#             pooled = model.forward_utterance(
+#                 enc["input_ids"].to(_device),
+#                 enc["attention_mask"].to(_device),
+#             )
+
+#             logit = model.phq_bin_head(pooled).squeeze(-1)
+#             prob = float(torch.sigmoid(logit).cpu().item())
+#             individual_scores.append(prob)
+
+#     # Average score
+#     prob = sum(individual_scores) / len(individual_scores)
+
+#     # Initial risk classification
+#     if prob < 0.45:
+#         risk = "Low"
+#     elif prob < 0.75:
+#         risk = "Moderate"
+#     else:
+#         risk = "Elevated"
+
+# # Sentiment correction
+#     risk, prob = _analyze_sentiment_override(reflections, risk, prob)
+
+#     return {
+#         "weekly_risk_level": risk,
+#         "risk_score": round(prob, 4)
+#     }
 
 # def predict_daic_weekly(reflections: list[str], use_lstm_threshold: int = 60):
 #     """
