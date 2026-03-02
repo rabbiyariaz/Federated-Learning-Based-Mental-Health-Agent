@@ -1,32 +1,30 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from app.database import Base
-from app.main import app
-from app.database import get_db
-from app.auth import SECRET_KEY, ALGORITHM
+import sys
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from jose import jwt
-
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from sqlalchemy import create_engine
+# Ensure fyp-backend/ is on Python path so `import app...` works
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.main import app
+from app.database import Base, get_db
+from app.auth import SECRET_KEY, ALGORITHM
 
 TEST_DATABASE_URL = "sqlite://"
-
-
-
 engine = create_engine(
     TEST_DATABASE_URL,
     connect_args={"check_same_thread": False},
-    poolclass=StaticPool
+    poolclass=StaticPool,
 )
-TestingSessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine
-)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
 @pytest.fixture(scope="function")
 def client():
     Base.metadata.create_all(bind=engine)
@@ -37,8 +35,6 @@ def client():
             yield db
         finally:
             db.close()
-            print(db.bind.url)
-
 
     app.dependency_overrides[get_db] = override_get_db
 

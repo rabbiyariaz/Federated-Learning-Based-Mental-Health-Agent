@@ -74,41 +74,63 @@ export async function analyzeText(text, moodData = null) {
  * @param {Array} history - Optional chat history
  * @returns {Promise<Object>} Agent response
  */
+// export async function sendChatMessage(message, history = []) {
+//   // Simulate API delay (1 second for realism)
+//   await new Promise(resolve => setTimeout(resolve, 1000));
+
+//   // Mock responses based on message content
+//   const lowerMessage = message.toLowerCase();
+  
+//   // Simple keyword-based mock responses for demonstration
+//   const responses = [
+//     "I understand that you're going through a difficult time. It's important to remember that your feelings are valid, and seeking support is a sign of strength.",
+//     "Thank you for sharing that with me. It sounds like you're dealing with a lot right now. Have you considered speaking with a mental health professional about these concerns?",
+//     "I hear you. It's completely normal to experience ups and downs. Remember that you don't have to face these challenges alone - there are resources and people who want to help.",
+//     "I appreciate you opening up. What you're describing sounds challenging. Would it be helpful to explore some coping strategies together?",
+//     "Thank you for trusting me with your thoughts. It takes courage to express what you're feeling. Remember, professional support is available when you're ready.",
+//   ];
+
+//   // Context-aware mock responses
+//   let response = responses[Math.floor(Math.random() * responses.length)];
+  
+//   if (lowerMessage.includes('sad') || lowerMessage.includes('depressed') || lowerMessage.includes('down')) {
+//     response = "I can sense that you're feeling low right now. These feelings can be really difficult to navigate. Have you noticed any patterns in when these feelings tend to be stronger?";
+//   } else if (lowerMessage.includes('anxious') || lowerMessage.includes('worried') || lowerMessage.includes('stress')) {
+//     response = "Anxiety and worry can feel overwhelming. It's helpful to remember that these feelings, while uncomfortable, are temporary. Have you tried any breathing exercises or grounding techniques?";
+//   } else if (lowerMessage.includes('help') || lowerMessage.includes('support')) {
+//     response = "I'm glad you're reaching out. There are many resources available, including mental health professionals, crisis helplines, and support groups. Would you like me to share some information about finding professional help?";
+//   } else if (lowerMessage.includes('thank') || lowerMessage.includes('thanks')) {
+//     response = "You're very welcome. I'm here to listen and support you. Remember, taking care of your mental health is important, and you're taking positive steps by engaging in this conversation.";
+//   } else if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
+//     response = "Hello! I'm here to listen and provide support. How are you feeling today? Feel free to share what's on your mind.";
+//   }
+
+//   return {
+//     response: response,
+//   };
+// }
 export async function sendChatMessage(message, history = []) {
-  // Simulate API delay (1 second for realism)
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  const res = await fetch("http://127.0.0.1:8000/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      history: (history || []).map(m => ({
+        text: m.text ?? "",
+        type: (m.type ?? m.sender ?? m.role ?? "").toString().toLowerCase() === "user" ? "user" : "agent",
+        timestamp: m.timestamp ?? null,
+      })),
+    }),
+  });
 
-  // Mock responses based on message content
-  const lowerMessage = message.toLowerCase();
-  
-  // Simple keyword-based mock responses for demonstration
-  const responses = [
-    "I understand that you're going through a difficult time. It's important to remember that your feelings are valid, and seeking support is a sign of strength.",
-    "Thank you for sharing that with me. It sounds like you're dealing with a lot right now. Have you considered speaking with a mental health professional about these concerns?",
-    "I hear you. It's completely normal to experience ups and downs. Remember that you don't have to face these challenges alone - there are resources and people who want to help.",
-    "I appreciate you opening up. What you're describing sounds challenging. Would it be helpful to explore some coping strategies together?",
-    "Thank you for trusting me with your thoughts. It takes courage to express what you're feeling. Remember, professional support is available when you're ready.",
-  ];
-
-  // Context-aware mock responses
-  let response = responses[Math.floor(Math.random() * responses.length)];
-  
-  if (lowerMessage.includes('sad') || lowerMessage.includes('depressed') || lowerMessage.includes('down')) {
-    response = "I can sense that you're feeling low right now. These feelings can be really difficult to navigate. Have you noticed any patterns in when these feelings tend to be stronger?";
-  } else if (lowerMessage.includes('anxious') || lowerMessage.includes('worried') || lowerMessage.includes('stress')) {
-    response = "Anxiety and worry can feel overwhelming. It's helpful to remember that these feelings, while uncomfortable, are temporary. Have you tried any breathing exercises or grounding techniques?";
-  } else if (lowerMessage.includes('help') || lowerMessage.includes('support')) {
-    response = "I'm glad you're reaching out. There are many resources available, including mental health professionals, crisis helplines, and support groups. Would you like me to share some information about finding professional help?";
-  } else if (lowerMessage.includes('thank') || lowerMessage.includes('thanks')) {
-    response = "You're very welcome. I'm here to listen and support you. Remember, taking care of your mental health is important, and you're taking positive steps by engaging in this conversation.";
-  } else if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
-    response = "Hello! I'm here to listen and provide support. How are you feeling today? Feel free to share what's on your mind.";
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Chat API failed: ${res.status} ${txt}`);
   }
 
-  return {
-    response: response,
-  };
+  return await res.json();
 }
+
 
 /**
  * Fetches federated learning metrics for the admin dashboard
