@@ -49,7 +49,7 @@ function AdminDashboardPage() {
       case 'error':
         return 'bg-red-600';
       default:
-        return 'bg-teal-600';
+        return 'bg-emerald-600';
     }
   };
 
@@ -70,7 +70,7 @@ function AdminDashboardPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
-            <svg className="animate-spin h-8 w-8 text-teal-400 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg className="animate-spin h-8 w-8 text-emerald-400 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
@@ -102,7 +102,7 @@ function AdminDashboardPage() {
       {/* Header */}
       <div className="mb-8 flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold text-teal-400 mb-2">Federated Learning Dashboard</h1>
+          <h1 className="text-3xl font-bold text-emerald-400 mb-2">Federated Learning Dashboard</h1>
           <p className="text-slate-300">
             Monitor federated learning clients, training rounds, and model metrics
           </p>
@@ -113,14 +113,14 @@ function AdminDashboardPage() {
               type="checkbox"
               checked={autoRefresh}
               onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="accent-teal-600"
+              className="accent-emerald-600"
             />
             <span className="text-sm text-slate-300">Auto-refresh</span>
           </label>
           <button
             onClick={loadMetrics}
             disabled={isLoading}
-            className="bg-teal-600 hover:bg-teal-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"
+            className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"
           >
             {isLoading ? 'Refreshing...' : 'Refresh'}
           </button>
@@ -131,7 +131,7 @@ function AdminDashboardPage() {
         <>
           {/* Global Model Status */}
           <div className="bg-slate-800 rounded-lg p-6 border border-slate-700 mb-6">
-            <h2 className="text-xl font-semibold text-teal-300 mb-4">Global Model Status</h2>
+            <h2 className="text-xl font-semibold text-emerald-400 mb-4">Global Model Status</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-slate-900 rounded-lg p-4">
                 <div className="text-sm text-slate-400 mb-1">Status</div>
@@ -166,7 +166,7 @@ function AdminDashboardPage() {
 
           {/* Clients Grid */}
           <div className="mb-6">
-            <h2 className="text-xl font-semibold text-teal-300 mb-4">
+            <h2 className="text-xl font-semibold text-emerald-400 mb-4">
               Client Nodes ({metrics.clients.length})
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

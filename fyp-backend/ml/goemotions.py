@@ -23,6 +23,8 @@ def _load_model():
     return _model, _tokenizer
 
 
+
+
 def predict_emotion(text: str) -> dict:
     """
     Predict emotion from text using the GoEmotions model.
@@ -57,27 +59,34 @@ def predict_emotion(text: str) -> dict:
         outputs = model(**inputs)
         logits = outputs.logits
 
-    # Apply softmax to get probabilities
-    probs = F.softmax(logits, dim=-1)
+    probs = torch.sigmoid(logits)
     probs = probs.squeeze().cpu().numpy()
 
-    # Get label mapping from model config
     id2label = model.config.id2label
-    num_labels = len(id2label)
+    emotion_scores = {
+        id2label[i]: float(probs[i])
+        for i in range(len(id2label))
+    }
 
-    # Create emotion probabilities dictionary
-    emotion_probs = {}
-    for i in range(num_labels):
-        label = id2label.get(i) or id2label.get(str(i)) or f"label_{i}"
-        emotion_probs[label] = float(probs[i])
+    # Sort descending
+    sorted_emotions = sorted(emotion_scores.items(), key=lambda x: x[1], reverse=True)
 
-    # Sort probabilities from highest to lowest
-    sorted_probs = dict(sorted(emotion_probs.items(), key=lambda x: x[1], reverse=True))
+    threshold = 0.25
+    max_emotions = 3
 
-    # Get the emotion with highest probability
-    predicted_emotion = max(emotion_probs.items(), key=lambda x: x[1])[0]
+    # Primary emotion = highest probability always
+    primary_emotion = sorted_emotions[0][0]
+
+    # Keep only meaningful emotions
+    filtered = [e for e in sorted_emotions if e[1] >= threshold]
+
+    # Fallback to top 1 if nothing passes threshold
+    if not filtered:
+        top_emotions = sorted_emotions[:1]
+    else:
+        top_emotions = filtered[:max_emotions]
 
     return {
-        "emotion": predicted_emotion,
-        "emotion_probs": sorted_probs
+        "primary_emotion": primary_emotion,
+        "dominant_emotions": [e[0] for e in top_emotions]
     }

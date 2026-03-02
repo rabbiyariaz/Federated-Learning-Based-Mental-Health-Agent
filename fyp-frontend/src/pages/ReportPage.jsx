@@ -1,112 +1,172 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo  } from 'react';
 import { getPHQSeverityLabel } from '../utils/scoring';
+import { fetchReport, fetchWeeklyTextRisk, getOrCreateToken } from "../api/backend";
 
-/**
- * ReportPage Component - Automated Report Generation
- * 
- * Purpose: Generate summary report of PHQ-8 and EMA data
- * - Shows baseline and endpoint PHQ-8 scores
- * - Displays EMA completion statistics
- * - Simulates PDF report generation
- * 
- * Academic Context: FYP - Depression Symptom Monitoring System
- * Report generation demonstrates automated symptom summary for clinical review
- */
 
 export default function ReportPage() {
-  const [studyData, setStudyData] = useState(null);
+  const [report, setReport] = useState(null);
+  const [weeklyTextRisk, setWeeklyTextRisk] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [reportGenerated, setReportGenerated] = useState(false);
+  const [error, setError] = useState(null);
 
-  /**
-   * Load data from localStorage on mount
-   */
+  //
+
+  const completed = report?.ema_days_completed ?? 0;
+  const latestPhq = report?.latest_phq ?? null;
+const phqProgress = report?.phq_progress ?? null;
+
+const phqList = report?.phq_list ?? [];
+
+const sortedPhq = useMemo(() => {
+  return [...phqList].sort(
+    (a, b) => new Date(a.submittedAt) - new Date(b.submittedAt)
+  );
+}, [phqList]);
+
+const baseline = sortedPhq.length > 0
+  ? sortedPhq[0].score
+  : null;
+  
+const delta = phqProgress?.change ?? null;
+  const total = 7;
+  const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+
   useEffect(() => {
-    const data = JSON.parse(localStorage.getItem('studyData')) || {};
-    setStudyData(data);
+    const controller = new AbortController();
+    let isMounted = true;
+
+    async function loadReport() {
+      try {
+        const token = await getOrCreateToken();
+        const [reportData, weeklyRiskData] = await Promise.all([
+          fetchReport(controller.signal),
+          fetchWeeklyTextRisk(controller.signal).catch(err => {
+            console.warn("Weekly text risk fetch failed:", err);
+            return null; // Don't fail the whole page if weekly risk fails
+          })
+        ]);
+
+        if (isMounted) {
+          setReport(reportData);
+          setWeeklyTextRisk(weeklyRiskData);
+        }
+      } catch (err) {
+  if (err.name === "AbortError") {
+    return; // silently ignore
+  }
+
+  console.error("Report fetch error:", err);
+
+  if (isMounted) {
+    setError("Could not load report");
+  }
+} finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadReport();
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, []);
 
-  /**
-   * Calculate EMA completion statistics
-   */
-  const getEMAStats = () => {
-    const emaEntries = studyData?.emaEntries || [];
-    const uniqueDays = new Set(emaEntries.map((entry) => entry.studyDay));
-    const completed = uniqueDays.size;
-    const total = 14;
-    const percentage = Math.round((completed / total) * 100);
 
-    return { completed, total, percentage };
-  };
+  const canGenerate = !!latestPhq;
 
-  /**
-   * Get PHQ-8 scores
-   */
-  const getPHQScores = () => {
-    const baseline = studyData?.phq8?.totalScore || null;
-    const followUp = studyData?.phq14?.totalScore || null;
-
-    return { baseline, followUp };
-  };
-
-  /**
-   * Simulate report generation
-   * In production, this would call a backend API to generate PDF
-   */
   const handleGenerateReport = async () => {
+    if (!report) return;
+
     setGenerating(true);
     setReportGenerated(false);
 
-    // Simulate API call delay
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    // await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Generate report summary text
-    const { baseline, followUp } = getPHQScores();
-    const { completed, total, percentage } = getEMAStats();
-    const consentData = JSON.parse(localStorage.getItem('userConsent')) || {};
+    const consentData =
+      JSON.parse(localStorage.getItem('userConsent')) || {};
+
     const consentDate = consentData.consentDate
       ? new Date(consentData.consentDate).toLocaleDateString()
       : 'N/A';
 
     const reportContent = `
-DEPRESSION SYMPTOM MONITORING STUDY
-Final Year Project Report
-=====================================
+PERSONAL SYMPTOM MONITORING SUMMARY
+====================================
 
-Study Period: ${consentDate} - ${new Date().toLocaleDateString()}
+Monitoring Period:
+${consentDate} – ${new Date().toLocaleDateString()}
 
-BASELINE ASSESSMENT (PHQ-8)
----------------------------
-Day 0 Total Score: ${baseline !== null ? baseline : 'Not completed'}
-${baseline !== null ? `Severity Category: ${getPHQSeverityLabel(baseline)}` : ''}
-${baseline !== null ? 'Score Range: 0-24 (monitoring only, not diagnostic)' : ''}
+PHQ-8 ASSESSMENTS
+-----------------
+First Recorded Score: ${baseline ?? 'Not completed'}
+${baseline !== null ? `Severity: ${getPHQSeverityLabel(baseline)}` : ''}
 
-FOLLOW-UP ASSESSMENT (PHQ-8)
------------------------------
-Day 14 Total Score: ${followUp !== null ? followUp : 'Not yet completed'}
-${followUp !== null ? `Severity Category: ${getPHQSeverityLabel(followUp)}` : ''}
-${followUp !== null ? `Change from Baseline: ${followUp - baseline >= 0 ? '+' : ''}${followUp - baseline}` : ''}
+Most Recent Score: ${latestPhq?.score ?? 'N/A'}
+${latestPhq ? `Current Severity: ${getPHQSeverityLabel(latestPhq.score)}` : ''}
 
-DAILY ASSESSMENTS (EMA)
-------------------------
-Days Completed: ${completed} / ${total}
+${phqProgress ? `
+Recent Change (Last Two Assessments):
+  Previous Score: ${phqProgress.previous_score}
+  Current Score: ${phqProgress.current_score}
+  Change: ${phqProgress.change > 0 ? '+' : ''}${phqProgress.change} points
+  Status: ${phqProgress.status}
+  Days Between: ${phqProgress.days_between} days
+` : ''}
+
+${report?.phq_trend ? `
+Overall PHQ Trend (${report.phq_trend.num_assessments} Assessments):
+  First Score: ${report.phq_trend.first_score}
+  Latest Score: ${report.phq_trend.last_score}
+  Total Change: ${report.phq_trend.total_change > 0 ? '+' : ''}${report.phq_trend.total_change} points
+  Trend Direction: ${report.phq_trend.trend_direction}
+  ${report.phq_trend.pattern ? `Pattern: ${report.phq_trend.pattern}` : ''}
+  Tracking Period: ${report.phq_trend.timespan_days} days
+  Average Change: ${report.phq_trend.avg_change_per_interval > 0 ? '+' : ''}${report.phq_trend.avg_change_per_interval} points per interval
+` : ''}
+
+DAILY CHECK-INS
+---------------
+Days Logged (Recent Week): ${completed} / ${total}
 Completion Rate: ${percentage}%
-${completed === total ? '✓ All daily assessments completed' : `⚠ ${total - completed} days remaining`}
 
-SUMMARY
---------
-This report provides a summary of symptom monitoring data collected over a 14-day period. 
-Data is for monitoring purposes only and does not constitute a clinical diagnosis.
+${weeklyTextRisk && weeklyTextRisk.weekly_risk_level !== 'No Data' ? `
+WEEKLY TEXT RISK ASSESSMENT
+-----------------------------
+Risk Level: ${weeklyTextRisk.weekly_risk_level}
+Reflections Analyzed: ${weeklyTextRisk.reflection_count}
+${weeklyTextRisk.message}
 
-For interpretation and clinical decisions, consult a qualified healthcare professional.
+Note: This assessment uses an LSTM aggregator to analyze your text reflections
+over the past 7 days and classify your mental health risk into one of three
+categories: Low, Moderate, or Elevated.
 
-Report Generated: ${new Date().toLocaleString()}
+` : ''}WEEKLY MOOD SUMMARY
+--------------------
+Average Mood Index: ${report?.ema_summary?.weekly_avg_depression ?? 'N/A'}
+Mood Trend: ${report?.ema_summary?.trend_depression ?? 'N/A'}
+
+Average Sleep Quality: ${report?.ema_summary?.weekly_avg_sleep ?? 'N/A'}
+Sleep Trend: ${report?.ema_summary?.trend_sleep ?? 'N/A'}
+
+Overall Interpretation:
+${report?.ema_summary?.clinical_interpretation ?? 'No summary available.'}
+
+Note:
+This summary is intended to help you track your mental wellbeing over time.
+It does not replace professional medical advice.
+
+Generated on: ${new Date().toLocaleString()}
 =====================================
     `.trim();
 
-    // Create a Blob and trigger download
     const blob = new Blob([reportContent], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
+
     const link = document.createElement('a');
     link.href = url;
     link.download = `symptom-monitoring-report-${Date.now()}.txt`;
@@ -119,34 +179,53 @@ Report Generated: ${new Date().toLocaleString()}
     setReportGenerated(true);
   };
 
-  const { baseline, followUp } = getPHQScores();
-  const { completed, total, percentage } = getEMAStats();
+  /* ---------- RENDER ---------- */
 
+  if (loading) {
+    return <p className="text-center mt-10">Loading report…</p>;
+  }
+
+  if (error) {
+    return (
+      <p className="text-center mt-10 text-red-600">
+        {error}
+      </p>
+    );
+  }
+
+  if (!report) {
+    return (
+      <p className="text-center mt-10 text-red-600">
+        Report unavailable.
+      </p>
+    );
+  }
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="bg-white rounded-lg shadow-sm p-8 mb-8">
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            Study Report
+            Your Symptom Monitoring Summary
           </h1>
           <p className="text-gray-600">
-            Generate a comprehensive summary of your symptom monitoring data
+  A personal overview of your recent mood and wellbeing patterns.
           </p>
         </div>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {/* PHQ Baseline Card */}
-          <div className="bg-white rounded-lg shadow-sm p-6 border-l-4 border-blue-500">
+          <div className="bg-white rounded-lg shadow-sm p-6 border-l-4 border-emerald-600">
             <h3 className="text-sm font-semibold text-gray-600 mb-2">
-              PHQ-8 Baseline (Day 0)
+              First Assessment
+
             </h3>
             {baseline !== null ? (
               <div>
                 <p className="text-4xl font-bold text-gray-800">{baseline}</p>
                 <p className="text-xs text-gray-500 mt-1">out of 24</p>
-                <p className="text-sm font-semibold text-blue-600 mt-2">
+                <p className="text-sm font-semibold text-emerald-600 mt-2">
                   {getPHQSeverityLabel(baseline)}
                 </p>
               </div>
@@ -155,34 +234,10 @@ Report Generated: ${new Date().toLocaleString()}
             )}
           </div>
 
-          {/* PHQ Follow-up Card */}
-          <div className="bg-white rounded-lg shadow-sm p-6 border-l-4 border-green-500">
-            <h3 className="text-sm font-semibold text-gray-600 mb-2">
-              PHQ-8 Follow-up (Day 14)
-            </h3>
-            {followUp !== null ? (
-              <div>
-                <p className="text-4xl font-bold text-gray-800">{followUp}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {followUp - baseline >= 0 ? '+' : ''}
-                  {followUp - baseline} from baseline
-                </p>
-                <p className="text-sm font-semibold text-green-600 mt-2">
-                  {getPHQSeverityLabel(followUp)}
-                </p>
-              </div>
-            ) : (
-              <div>
-                <p className="text-sm text-gray-500">Not yet completed</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  Complete on Day 14
-                </p>
-              </div>
-            )}
-          </div>
+
 
           {/* EMA Completion Card */}
-          <div className="bg-white rounded-lg shadow-sm p-6 border-l-4 border-purple-500">
+          <div className="bg-white rounded-lg shadow-sm p-6 border-l-4 border-blue-600">
             <h3 className="text-sm font-semibold text-gray-600 mb-2">
               Daily Check-ins
             </h3>
@@ -193,6 +248,243 @@ Report Generated: ${new Date().toLocaleString()}
           </div>
         </div>
 
+{/* Weekly Text Risk Assessment */}
+{weeklyTextRisk && weeklyTextRisk.weekly_risk_level !== 'No Data' && weeklyTextRisk.weekly_risk_level !== 'Insufficient Data' && (
+  <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg shadow-md p-6 mb-8 border-2 border-purple-200">
+    <div className="flex items-center gap-3 mb-4">
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-purple-600" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+        <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
+      </svg>
+      <h3 className="text-xl font-bold text-gray-800">
+        Weekly Text Risk Assessment
+      </h3>
+    </div>
+
+    <div className="flex items-center gap-6 mb-4">
+      <div className="flex-1">
+        <p className="text-sm text-gray-600 mb-2">Risk Level</p>
+        <div className={`inline-block px-6 py-3 rounded-lg font-bold text-lg ${
+          weeklyTextRisk.weekly_risk_level === 'Low' 
+            ? 'bg-emerald-500 text-white'
+            : weeklyTextRisk.weekly_risk_level === 'Moderate'
+            ? 'bg-amber-500 text-white'
+            : weeklyTextRisk.weekly_risk_level === 'Elevated'
+            ? 'bg-red-500 text-white'
+            : 'bg-gray-300 text-gray-700'
+        }`}>
+          {weeklyTextRisk.weekly_risk_level}
+        </div>
+      </div>
+
+      <div className="flex-1">
+        <p className="text-sm text-gray-600 mb-2">Reflections Analyzed</p>
+        <p className="text-4xl font-bold text-purple-700">
+          {weeklyTextRisk.reflection_count}
+        </p>
+        <p className="text-xs text-gray-500 mt-1">from last 7 days</p>
+      </div>
+    </div>
+
+    <div className="bg-white rounded-lg p-4 mt-4">
+      <p className="text-sm text-gray-700">
+        <strong className="text-purple-700">Analysis:</strong> {weeklyTextRisk.message}
+      </p>
+      {weeklyTextRisk.risk_score !== undefined && (
+        <p className="text-xs text-gray-600 mt-2">
+          <strong>Risk Score:</strong> {weeklyTextRisk.risk_score} 
+          <span className="text-gray-500"> (0 = very low risk, 1 = very high risk)</span>
+        </p>
+      )}
+     
+    </div>
+  </div>
+)}
+
+{/* Show message if insufficient data */}
+{weeklyTextRisk && (weeklyTextRisk.weekly_risk_level === 'Insufficient Data' || weeklyTextRisk.weekly_risk_level === 'No Data') && (
+  <div className="bg-blue-50 rounded-lg shadow-sm p-6 mb-8 border border-blue-200">
+    <div className="flex items-center gap-3">
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <div>
+        <h4 className="font-semibold text-blue-800">Weekly Text Risk Assessment</h4>
+        <p className="text-sm text-blue-700 mt-1">
+          {weeklyTextRisk.message} Submit at least 3 text reflections to enable weekly risk analysis.
+        </p>
+      </div>
+    </div>
+  </div>
+)}
+
+{report?.ema_summary && (
+  <div className="bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-200">
+    <h3 className="text-lg font-semibold text-gray-800 mb-4">
+      Weekly EMA Summary
+    </h3>
+
+    <div className="space-y-2 text-gray-700">
+      <p>
+        <strong className="text-gray-900">Average Depression Index:</strong>{" "}
+        {report.ema_summary.weekly_avg_depression}
+      </p>
+
+      <p>
+        <strong className="text-gray-900">Depression Trend:</strong>{" "}
+        {report.ema_summary.trend_depression}
+      </p>
+
+      <p>
+        <strong className="text-gray-900">Average Sleep:</strong>{" "}
+        {report.ema_summary.weekly_avg_sleep}
+      </p>
+
+      <p>
+        <strong className="text-gray-900">Sleep Trend:</strong>{" "}
+        {report.ema_summary.trend_sleep}
+      </p>
+
+      <p className="mt-4 text-sm text-gray-800">
+        <strong>Clinical Interpretation:</strong>{" "}
+        {report.ema_summary.clinical_interpretation}
+      </p>
+    </div>
+  </div>
+)}
+
+{/* PHQ Progress & Trend Section */}
+{(phqProgress || report?.phq_trend) && (
+  <div className="bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-200">
+    <h3 className="text-lg font-semibold text-gray-800 mb-4">
+      PHQ-8 Progress & Trend Analysis
+    </h3>
+
+    <div className="space-y-4">
+      {/* Recent Change (2 most recent PHQs) */}
+      {phqProgress && (
+        <div className="bg-gray-50 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">
+            Recent Change (Last Two Assessments)
+          </h4>
+          
+          <div className="grid grid-cols-2 gap-4 mb-3">
+            <div>
+              <p className="text-xs text-gray-500">Previous Score</p>
+              <p className="text-2xl font-bold text-gray-800">
+                {phqProgress.previous_score}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Current Score</p>
+              <p className="text-2xl font-bold text-gray-800">
+                {phqProgress.current_score}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-700">
+              <strong>Change:</strong> {phqProgress.change > 0 ? '+' : ''}{phqProgress.change} points
+            </span>
+            <span className={`text-sm font-semibold px-3 py-1 rounded-full ${
+              phqProgress.status === 'Significant improvement' 
+                ? 'bg-emerald-100 text-emerald-700'
+                : phqProgress.status === 'Significant worsening'
+                ? 'bg-red-100 text-red-700'
+                : 'bg-gray-100 text-gray-700'
+            }`}>
+              {phqProgress.status}
+            </span>
+          </div>
+
+          <p className="text-xs text-gray-500 mt-2">
+            {phqProgress.days_between} days between assessments
+          </p>
+        </div>
+      )}
+
+      {/* Overall Trend (All valid PHQs) */}
+      {report?.phq_trend && (
+        <div className="bg-blue-50 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">
+            Overall Trend ({report.phq_trend.num_assessments} Assessments)
+          </h4>
+          
+          <div className="grid grid-cols-2 gap-4 mb-3">
+            <div>
+              <p className="text-xs text-gray-500">First Score</p>
+              <p className="text-2xl font-bold text-gray-800">
+                {report.phq_trend.first_score}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Score</p>
+              <p className="text-2xl font-bold text-gray-800">
+                {report.phq_trend.last_score}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-700">
+                <strong>Total Change:</strong> {report.phq_trend.total_change > 0 ? '+' : ''}{report.phq_trend.total_change} points
+              </span>
+              <span className={`text-sm font-semibold px-3 py-1 rounded-full ${
+                report.phq_trend.trend_direction === 'Improving' 
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : report.phq_trend.trend_direction === 'Worsening'
+                  ? 'bg-red-100 text-red-700'
+                  : 'bg-gray-100 text-gray-700'
+              }`}>
+                {report.phq_trend.trend_direction}
+              </span>
+            </div>
+
+            <p className="text-sm text-gray-700">
+              {report.phq_trend.trend_description}
+            </p>
+
+            {report.phq_trend.pattern && (
+              <p className="text-sm text-blue-700">
+                <strong>Pattern:</strong> {report.phq_trend.pattern}
+              </p>
+            )}
+
+            <p className="text-xs text-gray-500 mt-2">
+              Tracking period: {report.phq_trend.timespan_days} days 
+              (avg {report.phq_trend.avg_change_per_interval > 0 ? '+' : ''}{report.phq_trend.avg_change_per_interval} points per interval)
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
+<div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+  <div className="bg-white rounded-lg shadow-sm p-6 border-l-4 border-emerald-600">
+    <h3 className="text-sm font-semibold text-gray-600 mb-2">
+      Most Recent Assessment
+    </h3>
+
+    {latestPhq ? (
+      <>
+        <p className="text-4xl font-bold text-gray-800">
+          {latestPhq.score}
+        </p>
+        <p className="text-xs text-gray-500 mt-1">out of 24</p>
+        <p className="text-sm font-semibold text-emerald-600 mt-2">
+          {getPHQSeverityLabel(latestPhq.score)}
+        </p>
+      </>
+    ) : (
+      <p className="text-sm text-gray-500">No assessment yet</p>
+    )}
+  </div>
+</div>
+
         {/* Report Details */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">
@@ -200,18 +492,6 @@ Report Generated: ${new Date().toLocaleString()}
           </h2>
           
           <div className="space-y-4">
-            <div className="flex justify-between items-center py-3 border-b border-gray-200">
-              <span className="text-sm font-medium text-gray-700">
-                Study Start Date
-              </span>
-              <span className="text-sm text-gray-600">
-                {JSON.parse(localStorage.getItem('userConsent') || '{}').consentDate
-                  ? new Date(
-                      JSON.parse(localStorage.getItem('userConsent')).consentDate
-                    ).toLocaleDateString()
-                  : 'N/A'}
-              </span>
-            </div>
 
             <div className="flex justify-between items-center py-3 border-b border-gray-200">
               <span className="text-sm font-medium text-gray-700">
@@ -219,26 +499,14 @@ Report Generated: ${new Date().toLocaleString()}
               </span>
               <span
                 className={`text-sm font-semibold ${
-                  baseline !== null ? 'text-green-600' : 'text-red-600'
+                  baseline !== null ? 'text-emerald-600' : 'text-red-600'
                 }`}
               >
                 {baseline !== null ? '✓ Completed' : '✗ Not Completed'}
               </span>
             </div>
 
-            <div className="flex justify-between items-center py-3 border-b border-gray-200">
-              <span className="text-sm font-medium text-gray-700">
-                Follow-up Assessment Status
-              </span>
-              <span
-                className={`text-sm font-semibold ${
-                  followUp !== null ? 'text-green-600' : 'text-gray-500'
-                }`}
-              >
-                {followUp !== null ? '✓ Completed' : 'Pending'}
-              </span>
-            </div>
-
+            
             <div className="flex justify-between items-center py-3 border-b border-gray-200">
               <span className="text-sm font-medium text-gray-700">
                 Daily Entries Completed
@@ -255,7 +523,7 @@ Report Generated: ${new Date().toLocaleString()}
               <div className="flex items-center gap-2">
                 <div className="w-32 bg-gray-200 rounded-full h-2">
                   <div
-                    className="bg-purple-600 h-2 rounded-full transition-all duration-500"
+                    className="bg-emerald-600 h-2 rounded-full transition-all duration-500"
                     style={{ width: `${percentage}%` }}
                   ></div>
                 </div>
@@ -275,17 +543,17 @@ Report Generated: ${new Date().toLocaleString()}
           
           <p className="text-sm text-gray-600 mb-6">
             Generate a comprehensive text-based report of your symptom monitoring data. 
-            This report includes PHQ-8 scores, EMA completion statistics, and study timeline. 
+            This report includes PHQ-8 scores, EMA completion statistics. 
             <strong> Note:</strong> This is a summary report for monitoring purposes only and does not 
             constitute a clinical diagnosis.
           </p>
 
           {reportGenerated && (
-            <div className="mb-4 bg-green-50 border-l-4 border-green-500 p-4">
-              <p className="text-green-800 font-semibold">
+            <div className="mb-4 bg-emerald-50 border-l-4 border-emerald-600 p-4">
+              <p className="text-emerald-800 font-semibold">
                 ✓ Report generated successfully!
               </p>
-              <p className="text-green-700 text-sm mt-1">
+              <p className="text-emerald-700 text-sm mt-1">
                 Your report has been downloaded. Check your downloads folder.
               </p>
             </div>
@@ -293,13 +561,13 @@ Report Generated: ${new Date().toLocaleString()}
 
           <button
             onClick={handleGenerateReport}
-            disabled={generating || baseline === null}
+            disabled={generating || !canGenerate}
             className={`w-full py-3 px-6 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${
               generating
                 ? 'bg-gray-400 text-white cursor-wait'
-                : baseline === null
+                : !canGenerate
                 ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
-                : 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
+                : 'bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer'
             }`}
           >
             {generating ? (
@@ -326,7 +594,7 @@ Report Generated: ${new Date().toLocaleString()}
                 </svg>
                 Generating Report...
               </>
-            ) : baseline === null ? (
+            ) : !canGenerate ? (
               'Complete Baseline Assessment First'
             ) : (
               <>
@@ -347,21 +615,20 @@ Report Generated: ${new Date().toLocaleString()}
             )}
           </button>
 
-          {baseline === null && (
+          {!canGenerate && (
             <p className="text-xs text-gray-500 mt-3 text-center">
-              You must complete the baseline PHQ-8 assessment before generating a report.
+    You need at least one PHQ-8 assessment before generating a report.
             </p>
           )}
         </div>
 
         {/* Disclaimer */}
-        <div className="mt-8 bg-yellow-50 border-l-4 border-yellow-400 p-4">
-          <p className="text-sm text-yellow-800">
-            <strong>Academic Disclaimer:</strong> This report generation feature is for demonstration 
-            purposes as part of a Final Year Project. In a production system, reports would be generated 
-            by a secure backend server and potentially reviewed by healthcare professionals before delivery.
-          </p>
-        </div>
+        <div className="mt-8 bg-amber-50 border-l-4 border-amber-600 p-4">
+  <p className="text-sm text-amber-800">
+    This summary is designed to help you understand your mood patterns over time.
+    If you are concerned about your symptoms, please consider speaking with a qualified healthcare professional.
+  </p>
+</div>
       </div>
     </div>
   );

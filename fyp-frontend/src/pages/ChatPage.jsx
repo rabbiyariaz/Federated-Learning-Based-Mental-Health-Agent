@@ -94,7 +94,7 @@ function ChatPage() {
     <div className="flex flex-col h-[calc(100vh-8rem)] max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       {/* Header */}
       <div className="mb-4">
-        <h1 className="text-3xl font-bold text-teal-400 mb-2">Chat with Agent</h1>
+        <h1 className="text-3xl font-bold text-emerald-700 mb-2">Chat with Agent</h1>
         <p className="text-slate-300 text-sm">
           Have a conversation with the mental health AI agent. Share your thoughts and feelings.
         </p>

@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './layout/MainLayout';
 import PHQPage from './pages/PHQPage';
@@ -6,11 +5,15 @@ import EMAPage from './pages/EMAPage';
 import DashboardPage from './pages/DashboardPage';
 import ReportPage from './pages/ReportPage';
 import HomePage from './pages/HomePage';
+import GuidePage from './pages/GuidePage';
+import ProgressPage from './pages/ProgressPage';
 import ScreeningPage from './pages/ScreeningPage';
 import ChatPage from './pages/ChatPage';
 import HistoryPage from './pages/HistoryPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
-import { checkHealth } from "./api/backend";
+import { checkHealth, getOrCreateToken } from "./api/backend";
+import { useEffect, useRef } from "react";
+
 
 /**
  * ProtectedRoute Component
@@ -27,18 +30,32 @@ function ProtectedRoute({ element }) {
   return element;
 }
 
+
 function App() {
+  const hasInitialized = useRef(false);
+
   useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+
+    getOrCreateToken()
+      .then((token) => {
+        console.log("Anonymous token:", token);
+      })
+      .catch((err) => console.error("Token creation error:", err));
+
     checkHealth()
       .then((data) => console.log("Backend health:", data))
       .catch((err) => console.error("Backend health error:", err));
-  }, []);
 
+  }, []);
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<MainLayout />}>
           <Route index element={<HomePage />} />
+          <Route path="guide" element={<GuidePage />} />
+          <Route path="progress" element={<ProgressPage />} />
           <Route path="screening" element={<ScreeningPage />} />
           <Route path="phq" element={<PHQPage />} />
           <Route path="ema" element={<EMAPage />} />

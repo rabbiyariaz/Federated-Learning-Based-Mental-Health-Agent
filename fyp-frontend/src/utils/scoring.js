@@ -29,19 +29,19 @@
  * Clinical Note: In this system, scores are for MONITORING purposes.
  * No severity labels or diagnostic interpretations are provided.
  */
-export function calculatePHQScore(responses) {
-  if (!responses || Object.keys(responses).length === 0) {
-    return 0;
-  }
+// export function calculatePHQScore(responses) {
+//   if (!responses || Object.keys(responses).length === 0) {
+//     return 0;
+//   }
 
-  // Sum all individual question scores (each 0-3)
-  const totalScore = Object.values(responses).reduce((sum, score) => {
-    return sum + (typeof score === 'number' ? score : 0);
-  }, 0);
+//   // Sum all individual question scores (each 0-3)
+//   const totalScore = Object.values(responses).reduce((sum, score) => {
+//     return sum + (typeof score === 'number' ? score : 0);
+//   }, 0);
 
-  // Ensure score is within valid range
-  return Math.min(Math.max(totalScore, 0), 24);
-}
+//   // Ensure score is within valid range
+//   return Math.min(Math.max(totalScore, 0), 24);
+// }
 
 /**
  * calculateEMAAverage(entries, field)
@@ -68,26 +68,26 @@ export function calculatePHQScore(responses) {
  * - Reduced impact of single-day anomalies or good/bad days
  * - Better reflects habitual symptom patterns
  */
-export function calculateEMAAverage(entries, field) {
-  if (!entries || entries.length === 0) {
-    return 0;
-  }
+// export function calculateEMAAverage(entries, field) {
+//   if (!entries || entries.length === 0) {
+//     return 0;
+//   }
 
-  // Filter entries that have a response for the requested field
-  const validScores = entries
-    .map((entry) => entry.responses[field])
-    .filter((score) => typeof score === 'number' && score > 0);
+//   // Filter entries that have a response for the requested field
+//   const validScores = entries
+//     .map((entry) => entry.responses[field])
+//     .filter((score) => typeof score === 'number' && score > 0);
 
-  if (validScores.length === 0) {
-    return 0;
-  }
+//   if (validScores.length === 0) {
+//     return 0;
+//   }
 
-  // Calculate mean and round to 1 decimal place
-  const sum = validScores.reduce((acc, score) => acc + score, 0);
-  const average = sum / validScores.length;
+//   // Calculate mean and round to 1 decimal place
+//   const sum = validScores.reduce((acc, score) => acc + score, 0);
+//   const average = sum / validScores.length;
 
-  return Math.round(average * 10) / 10;
-}
+//   return Math.round(average * 10) / 10;
+// }
 
 /**
  * calculateEMAVariability(entries, field)
@@ -124,52 +124,52 @@ export function calculateEMAAverage(entries, field) {
  * Note: This is standard deviation, which is appropriate for 1-5 scales
  * and provides a normalized measure of spread.
  */
-export function calculateEMAVariability(entries, field) {
-  if (!entries || entries.length < 2) {
-    return 0; // Need at least 2 data points for variability
-  }
+// export function calculateEMAVariability(entries, field) {
+//   if (!entries || entries.length < 2) {
+//     return 0; // Need at least 2 data points for variability
+//   }
 
-  // Get all valid scores for the requested field
-  const validScores = entries
-    .map((entry) => entry.responses[field])
-    .filter((score) => typeof score === 'number' && score > 0);
+//   // Get all valid scores for the requested field
+//   const validScores = entries
+//     .map((entry) => entry.responses[field])
+//     .filter((score) => typeof score === 'number' && score > 0);
 
-  if (validScores.length < 2) {
-    return 0;
-  }
+//   if (validScores.length < 2) {
+//     return 0;
+//   }
 
-  // Calculate mean
-  const mean = validScores.reduce((acc, score) => acc + score, 0) / validScores.length;
+//   // Calculate mean
+//   const mean = validScores.reduce((acc, score) => acc + score, 0) / validScores.length;
 
-  // Calculate sum of squared differences from mean
-  const sumSquaredDifferences = validScores.reduce(
-    (acc, score) => acc + Math.pow(score - mean, 2),
-    0
-  );
+//   // Calculate sum of squared differences from mean
+//   const sumSquaredDifferences = validScores.reduce(
+//     (acc, score) => acc + Math.pow(score - mean, 2),
+//     0
+//   );
 
-  // Calculate variance and standard deviation
-  const variance = sumSquaredDifferences / validScores.length;
-  const standardDeviation = Math.sqrt(variance);
+//   // Calculate variance and standard deviation
+//   const variance = sumSquaredDifferences / validScores.length;
+//   const standardDeviation = Math.sqrt(variance);
 
-  // Round to 2 decimal places
-  return Math.round(standardDeviation * 100) / 100;
-}
+//   // Round to 2 decimal places
+//   return Math.round(standardDeviation * 100) / 100;
+// }
 
 /**
  * Helper: Get all EMA entries from localStorage
  */
-export function getEMAEntries() {
-  const studyData = JSON.parse(localStorage.getItem('studyData')) || {};
-  return studyData.emaEntries || [];
-}
+// export function getEMAEntries() {
+//   const studyData = JSON.parse(localStorage.getItem('studyData')) || {};
+//   return studyData.emaEntries || [];
+// }
 
 /**
  * Helper: Get PHQ-8 baseline score
- */
-export function getPHQBaseline() {
-  const studyData = JSON.parse(localStorage.getItem('studyData')) || {};
-  return studyData.phq8?.totalScore || null;
-}
+//  */
+// export function getPHQBaseline() {
+//   const studyData = JSON.parse(localStorage.getItem('studyData')) || {};
+//   return studyData.phq8?.totalScore || null;
+// }
 
 /**
  * Helper: Get PHQ-8 follow-up score (Day 14)
@@ -183,40 +183,40 @@ export function getPHQFollowUp() {
  * Helper: Calculate PHQ-8 change (follow-up - baseline)
  * Returns null if either score is missing
  */
-export function calculatePHQChange() {
-  const baseline = getPHQBaseline();
-  const followUp = getPHQFollowUp();
+// export function calculatePHQChange() {
+//   const baseline = getPHQBaseline();
+//   const followUp = getPHQFollowUp();
 
-  if (baseline === null || followUp === null) {
-    return null;
-  }
+//   if (baseline === null || followUp === null) {
+//     return null;
+//   }
 
-  return followUp - baseline;
-}
+//   return followUp - baseline;
+// }
 
-/**
- * Helper: Get EMA completion percentage
- */
-export function getEMACompletionPercentage() {
-  const entries = getEMAEntries();
-  const uniqueDays = new Set(entries.map((entry) => entry.studyDay));
-  return Math.round((uniqueDays.size / 14) * 100);
-}
+// /**
+//  * Helper: Get EMA completion percentage
+//  */
+// export function getEMACompletionPercentage() {
+//   const entries = getEMAEntries();
+//   const uniqueDays = new Set(entries.map((entry) => entry.studyDay));
+//   return Math.round((uniqueDays.size / 14) * 100);
+// }
 
-/**
- * Helper: Format score summary for display
- * Returns object with calculated metrics for a specific EMA question
- */
-export function getEMAQuestionSummary(fieldId) {
-  const entries = getEMAEntries();
+// /**
+//  * Helper: Format score summary for display
+//  * Returns object with calculated metrics for a specific EMA question
+//  */
+// export function getEMAQuestionSummary(fieldId) {
+//   const entries = getEMAEntries();
 
-  return {
-    average: calculateEMAAverage(entries, fieldId),
-    variability: calculateEMAVariability(entries, fieldId),
-    entriesCount: entries.length,
-    lastValue: entries.length > 0 ? entries[entries.length - 1].responses[fieldId] : null,
-  };
-}
+//   return {
+//     average: calculateEMAAverage(entries, fieldId),
+//     variability: calculateEMAVariability(entries, fieldId),
+//     entriesCount: entries.length,
+//     lastValue: entries.length > 0 ? entries[entries.length - 1].responses[fieldId] : null,
+//   };
+// }
 
 /**
  * getPHQSeverityLabel(score)
