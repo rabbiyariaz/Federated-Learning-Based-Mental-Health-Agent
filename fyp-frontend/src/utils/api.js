@@ -116,9 +116,9 @@ export async function sendChatMessage(message, history = []) {
     body: JSON.stringify({
       message,
       history: (history || []).map(m => ({
-        text: m.text,
-        type: m.type,
-        timestamp: m.timestamp,
+        text: m.text ?? "",
+        type: (m.type ?? m.sender ?? m.role ?? "").toString().toLowerCase() === "user" ? "user" : "agent",
+        timestamp: m.timestamp ?? null,
       })),
     }),
   });
