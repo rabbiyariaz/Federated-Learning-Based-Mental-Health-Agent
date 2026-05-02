@@ -46,6 +46,15 @@ def client():
 
 
 @pytest.fixture(scope="function")
+def db_session():
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@pytest.fixture(scope="function")
 def auth_context(client):
     response = client.post("/api/sessions/create")
     assert response.status_code == 200

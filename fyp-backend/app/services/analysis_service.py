@@ -97,9 +97,9 @@ def compute_ema_summary(ema_entries):
         severity = "Minimal depressive symptom burden"
 
     clinical_note = (
-        f"Weekly average depression index is {weekly_avg_depression}, "
+        f"Weekly Depressive Symptom Intensity is {weekly_avg_depression}, "
         f"indicating {severity}. Mood variability is {mood_variability}. "
-        f"Depression trend appears {trend_dep.lower()}. "
+        f"Depressive Symptom Trend {trend_dep.lower()}. "
         f"Average sleep was {weekly_avg_sleep}, with sleep trend {trend_sleep.lower()}."
     )
 

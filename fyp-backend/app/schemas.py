@@ -11,6 +11,7 @@ class SessionCreate(BaseModel):
 class SessionResponse(BaseModel):
     session_id: str
     created_at: datetime
+    expires_at: datetime | None = None
 
     class Config:
         from_attributes = True

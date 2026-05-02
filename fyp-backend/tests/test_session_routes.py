@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import datetime, timezone
 import uuid
 from jose import jwt
 from app.auth import SECRET_KEY, ALGORITHM
@@ -17,6 +17,7 @@ def test_create_session(client):
     payload = jwt.decode(data["access_token"], SECRET_KEY, algorithms=[ALGORITHM])
     assert "session_id" in payload
     assert "exp" in payload
+    assert payload["type"] == "access"
 
 
 def test_create_multiple_sessions(client):
@@ -104,3 +105,42 @@ def test_session_id_format(client):
     
     parsed = uuid.UUID(session_id)
     assert str(parsed) == session_id
+
+
+def test_session_refresh_endpoint_removed(client):
+    response = client.post("/api/sessions/refresh")
+    assert response.status_code == 404
+
+
+def test_access_token_expiry_is_30_days(client):
+    """Test that access tokens match the 30-day session lifetime"""
+    response = client.post("/api/sessions/create")
+    assert response.status_code == 200
+    
+    token = response.json()["access_token"]
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    
+    # Check expiry time
+    from datetime import datetime, timezone
+    exp_time = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+    now = datetime.now(timezone.utc)
+    
+    # Should be approximately 30 days from now
+    time_diff = (exp_time - now).total_seconds()
+    assert 29 * 24 * 60 * 60 <= time_diff <= 31 * 24 * 60 * 60
+
+
+def test_session_row_has_lifecycle_fields(client, db_session):
+    response = client.post("/api/sessions/create")
+    payload = jwt.decode(response.json()["access_token"], SECRET_KEY, algorithms=[ALGORITHM])
+    session_id = payload["session_id"]
+
+    from app.models import Session as SessionModel
+
+    session = db_session.query(SessionModel).filter(SessionModel.session_id == session_id).first()
+
+    assert session is not None
+    assert session.is_revoked is False
+    assert session.expires_at is not None
+    assert session.last_active_at is not None
+    assert session.created_at is not None

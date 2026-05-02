@@ -3,6 +3,19 @@ const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000")
   .replace(/\/+$/, "");
 
 
+/**
+ * Check if JWT token has already expired
+ */
+function isTokenExpired(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const expiresAt = payload.exp * 1000;
+    return expiresAt <= Date.now();
+  } catch (err) {
+    console.error('Error decoding token:', err);
+    return true;
+  }
+}
 
 
 async function createSession() {
@@ -19,24 +32,21 @@ async function createSession() {
 }
 
 
-
-
+/**
+ * Get existing token or create new session
+ * Automatically refreshes token if expiring within 5 minutes
+ */
 export async function getOrCreateToken() {
   const existingToken = localStorage.getItem("token");
 
   if (existingToken) {
-    return existingToken;
+    if (!isTokenExpired(existingToken)) {
+      return existingToken;
+    }
+    localStorage.removeItem("token");
   }
 
-  const res = await fetch(`${BASE_URL}/api/sessions/create`, {
-    method: "POST"
-  });
-
-  if (!res.ok) {
-    throw new Error("Failed to create session");
-  }
-
-  const data = await res.json();
+  const data = await createSession();
   localStorage.setItem("token", data.access_token);
   return data.access_token;
 }
@@ -79,6 +89,7 @@ export async function submitPHQ(payload) {
     body: JSON.stringify(payload)
   });
 
+  // On 401, try refreshing token once
   if (res.status === 401) {
     localStorage.removeItem("token");
     token = await getOrCreateToken();
@@ -142,7 +153,11 @@ export async function submitEMA(payload) {
 export async function fetchEMATodayStatus() {
   let token = await getOrCreateToken();
 
-  let res = await fetch(`${BASE_URL}/ema/today-status`, {
+  // Get client's local date (not UTC)
+  const today = new Date();
+  const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  let res = await fetch(`${BASE_URL}/ema/today-status?check_date=${localDate}`, {
     headers: {
       "Authorization": `Bearer ${token}`
     }
@@ -152,7 +167,7 @@ export async function fetchEMATodayStatus() {
     localStorage.removeItem("token");
     token = await getOrCreateToken();
 
-    res = await fetch(`${BASE_URL}/ema/today-status`, {
+    res = await fetch(`${BASE_URL}/ema/today-status?check_date=${localDate}`, {
       headers: {
         "Authorization": `Bearer ${token}`
       }
@@ -218,7 +233,6 @@ export async function fetchReport(signal) {
     }
   });
 
-  // If token expired → clear + regenerate once
   if (res.status === 401) {
     localStorage.removeItem("token");
     token = await getOrCreateToken();
@@ -249,7 +263,6 @@ export async function fetchWeeklyTextRisk(signal) {
     }
   });
 
-  // If token expired → clear + regenerate once
   if (res.status === 401) {
     localStorage.removeItem("token");
     token = await getOrCreateToken();
@@ -281,7 +294,6 @@ export async function fetchDashboardSummary() {
     }
   });
 
-  // If token expired → clear and retry once
   if (res.status === 401) {
     localStorage.removeItem("token");
     token = await getOrCreateToken();

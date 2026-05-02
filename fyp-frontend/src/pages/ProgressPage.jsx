@@ -213,7 +213,7 @@ function ProgressPage() {
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-8 mb-8">
             <h2 className="text-2xl font-bold text-emerald-900 mb-6">Your Stats</h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="text-center">
                 <p className="text-4xl font-bold text-emerald-600 mb-2">{data?.phq?.length || 0}</p>
                 <p className="text-gray-700">PHQ Assessments Completed</p>
@@ -221,12 +221,6 @@ function ProgressPage() {
               <div className="text-center">
                 <p className="text-4xl font-bold text-emerald-600 mb-2">{emaCount}</p>
                 <p className="text-gray-700">Daily Check-ins Submitted</p>
-              </div>
-              <div className="text-center">
-                <p className="text-4xl font-bold text-emerald-600 mb-2">
-                  {Math.round((emaCount / Math.max(data?.phq?.length || 1, 1)) * 100)}%
-                </p>
-                <p className="text-gray-700">Consistency Rate</p>
               </div>
             </div>
           </div>

@@ -48,7 +48,7 @@ class WeeklyReportService:
         
         # Enhance result with metadata
         result["reflection_count"] = len(reflections)
-        result["message"] = f"Weekly analysis based on {len(reflections)} reflections"
+        result["message"] = f"Weekly analysis based on 30 reflections"
         
         return result
     

@@ -37,7 +37,7 @@ def get_user_reflections_last_n(db: Session, user_id: str, n: int = 50) -> List[
     """
     Get the last N reflections regardless of time window.
     
-    Useful when you want a fixed sequence length for LSTM:
+    Useful when want a fixed sequence length for LSTM:
     - n=50: Good for moderate sequences
     - n=80-120: Optimal for DAIC-WOZ LSTM
     

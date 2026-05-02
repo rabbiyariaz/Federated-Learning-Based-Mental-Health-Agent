@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from sqlalchemy import text
 import torch
 import torch.nn as nn
@@ -10,6 +9,25 @@ from .goemotions import predict_emotion
 from torch.nn.utils.rnn import pad_packed_sequence
 
 import re
+
+PASSIVE_RISK = [
+    r"\bwant to disappear\b",
+    r"\bdon'?t want to (exist|be here|be alive)\b",
+]
+
+AMBIGUOUS = [
+    r"\bnot sure\b.{0,20}\b(hurt myself|do something stupid)\b",
+    r"\bcan'?t (promise|guarantee)\b.{0,20}\b(won'?t hurt|stay safe)\b",
+        r"\bnot sure\b.{0,40}(hurt myself|do something|stay safe|control myself)",
+    r"\bwon't\b.{0,20}(do something stupid|hurt myself)",
+    r"\b(i\s+)?guess\b.{0,20}\b(won't|will not)\b.{0,20}\b(hurt myself|do something stupid|stay safe)\b",
+]
+
+RECOVERY_SIGNALS = [
+    r"\b(used to|last year|back then|went through a phase)\b.{0,120}"
+    r"(but now|now i'?m|feeling (better|stable|okay)|started therapy|not (in that place|thinking like that))",
+    r"\b(not in that place|not thinking like that|no longer feel)\b",
+]
 
 HIGH_RISK_PATTERNS = [
     r"\bdisappear(ed|ing)?\b",
@@ -158,35 +176,43 @@ def contains_high_risk_phrase(text: str) -> bool:
             return True
     return False
 
+NEGATION_WINDOW = [
+    r"\b(not|no longer|never|don't|won't|wouldn't|didn't)\b",
+    r"\b(i\s+)?(don't think|do not think)\b",
+    r"\b(i\s+)?guess\b.{0,20}\b(won't|will not)\b",
+]
+
 def contains_crisis_content(text: str) -> bool:
-    """Check for explicit self-harm/suicide indicators that require immediate elevated risk."""
     text_lower = text.lower()
     for pattern in CRISIS_PATTERNS:
-        if re.search(pattern, text_lower):
-            return True
+        match = re.search(pattern, text_lower)
+        if match:
+            window = text_lower[max(0, match.start() - 100):match.start()]
+            negated = any(re.search(p, window) for p in NEGATION_WINDOW)
+            if not negated:
+                return True
     return False
 
-def check_reflections_for_crisis(reflections: list[str]) -> tuple[bool, list[str]]:
-    """
-    Scan ALL reflections for crisis content.
-    Returns: (has_crisis, list_of_crisis_reflections)
-    """
+def check_reflections_for_crisis(reflections: list[str]) -> tuple[bool, list[str], list[str]]:
     crisis_found = False
-    crisis_reflections = []
-    
+    crisis_reflections = []      # formatted labels for logging
+    crisis_texts = []            # original full text for recovery check
+
     for idx, reflection in enumerate(reflections):
         if contains_crisis_content(reflection):
             crisis_found = True
             crisis_reflections.append(f"Reflection {idx+1}: {reflection[:100]}...")
-            
-    return crisis_found, crisis_reflections
+            crisis_texts.append(reflection)   # ← store full original
+
+    return crisis_found, crisis_reflections, crisis_texts
+
 
 def escalate_one_level(risk: str) -> str:
     if risk == "Low":
         return "Moderate"
     elif risk == "Moderate":
         return "Elevated"
-    return risk  # Elevated stays Elevated
+    return risk  
 
 def load_daic():
     global _tokenizer, _model
@@ -213,19 +239,15 @@ def load_daic():
 
 
 
+
 def predict_daic_session(text: str):
     text = (text or "").strip()
     if not text:
         raise ValueError("Empty text")
 
-    if contains_crisis_content(text):
-        print("[CRISIS DETECTED] Returning ELEVATED risk")
-        return {
-            "emotion": "distress",
-            "risk_level": "Elevated",
-            "risk_score": 0.95,
-            "crisis_detected": True
-        }
+    # CHANGE 1: removed the early crisis regex block that was here.
+    # WHY: it short-circuited ML entirely, returning Elevated 0.95
+    # for "I am NOT going to kill myself" — ML never got to run.
 
     tokenizer, model = load_daic()
 
@@ -242,26 +264,24 @@ def predict_daic_session(text: str):
             enc["input_ids"].to(_device),
             enc["attention_mask"].to(_device),
         )
-
         logit = model.phq_bin_head(pooled).squeeze(-1)
-
         temperature = 1.8
         scaled_logit = logit / temperature
         prob = float(torch.sigmoid(scaled_logit).cpu().item())
 
-    # ---- Emotion prediction (ONLY ONCE) ----
+    # ---- Emotion prediction — unchanged ----
     emotion_result = predict_emotion(text)
     primary_emotion = emotion_result.get("primary_emotion", "").lower()
     dominant_emotions = emotion_result.get("dominant_emotions", [])
     final_emotion = primary_emotion
 
-    # ---- Neutral dampener ----
+    # ---- Neutral dampener — unchanged ----
     if primary_emotion == "neutral" and not contains_high_risk_phrase(text):
         prob *= 0.75
 
     print(f"[SESSION ANALYSIS] Text: '{text}' | DAIC probability: {prob:.4f}")
 
-    # ---- Thresholds ----
+    # ---- Thresholds — unchanged ----
     if prob < 0.45:
         risk = "Low"
     elif prob < 0.75:
@@ -269,27 +289,75 @@ def predict_daic_session(text: str):
     else:
         risk = "Elevated"
 
-    # ---- Escalation rule ----
-    if prob > 0.65 and contains_high_risk_phrase(text):
+    
+
+    # CHANGE 2: cache text_lower once here for all regex below.
+    # WHY: avoids calling .lower() repeatedly in every check.
+    text_lower = text.lower()
+
+
+    # Precompute flags
+    crisis = contains_crisis_content(text)
+    ambiguous = any(re.search(p, text_lower) for p in AMBIGUOUS)
+    passive = any(re.search(p, text_lower) for p in PASSIVE_RISK)
+
+    escalation_used = False
+
+    if crisis and not escalation_used:
+        risk = escalate_one_level(risk)
+        escalation_used = True
+
+    elif ambiguous and prob > 0.45 and not escalation_used:
+        risk = escalate_one_level(risk)
+        escalation_used = True
+
+    elif passive and prob > 0.55 and not escalation_used:
+        risk = escalate_one_level(risk)
+        escalation_used = True
+
+    # ---- High-risk phrase escalation — unchanged logic, same position ----
+    elif prob > 0.65 and contains_high_risk_phrase(text) and not escalation_used:
         print("HIGH RISK PHRASE detected")
         risk = escalate_one_level(risk)
         final_emotion = "distress"
+        escalation_used = True
 
-    # ---- Surprise correction (only if not already distress) ----
+    if risk == "Elevated":
+        if prob < 0.65 and not crisis:
+            if any(word in text_lower for word in ["empty", "meaningless", "pointless"]):
+                risk = "Moderate"
+
+    
+
+
+
+    
+    # CHANGE 6: recovery narrative dampener — new.
+    # WHY: "I used to want to kill myself but now I'm fine"
+    # still triggers ML at Elevated because of the crisis vocabulary.
+    # If clear past-tense + recovery signals exist, downgrade one level.
+    if risk == "Elevated" and any(re.search(p, text_lower) for p in RECOVERY_SIGNALS):
+        risk = "Moderate"
+
+    # ---- Surprise correction — unchanged ----
     if final_emotion != "distress":
         if primary_emotion == "surprise" and prob > 0.60:
-            print(dominant_emotions)
             if "sadness" in dominant_emotions:
                 final_emotion = "sadness"
             else:
                 final_emotion = "distress"
+
+    POSITIVE = ["enjoy", "peace", "happy", "fine", "okay", "grateful"]
+
+    if any(word in text_lower for word in POSITIVE):
+        if risk == "Moderate" and prob < 0.6:
+            risk = "Low"
 
     return {
         "risk_level": risk,
         "risk_score": round(prob, 4),
         "emotion": final_emotion
     }
-
 
 
 def predict_daic_weekly(reflections: list[str]):
@@ -301,15 +369,21 @@ def predict_daic_weekly(reflections: list[str]):
         return {"weekly_risk_level": "Insufficient Data"}
 
     # 1️⃣ Crisis Override
-    has_crisis, crisis_reflections = check_reflections_for_crisis(reflections)
+    has_crisis, crisis_reflections, crisis_texts = check_reflections_for_crisis(reflections)
     if has_crisis:
-        return {
-            "weekly_risk_level": "Elevated",
-            "risk_score": 0.95,
-            "crisis_detected": True,
-            "crisis_count": len(crisis_reflections),
-            "explanation": ["Crisis phrases detected"]
-        }
+        all_recovery = all(
+            any(re.search(p, r.lower()) for p in RECOVERY_SIGNALS)
+            for r in crisis_texts    # ← use full text, no prefix, no truncation
+        )
+        if not all_recovery:
+            return {
+                "weekly_risk_level": "Elevated",
+                "risk_score": 0.95,
+                "crisis_detected": True,
+                "crisis_count": len(crisis_reflections),
+                "explanation": ["Crisis phrases detected"]
+            }
+        # If all were recovery narratives, fall through to ML scoring
 
     tokenizer, model = load_daic()
 

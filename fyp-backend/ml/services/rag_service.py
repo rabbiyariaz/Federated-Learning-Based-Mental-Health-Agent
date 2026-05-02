@@ -1,6 +1,7 @@
 from pathlib import Path
 import re
 import logging
+from typing import List
 
 STOPWORDS = {
     "i","im","i'm","me","my","mine","we","our","you","your","yours",
@@ -22,7 +23,7 @@ class RAGService:
         self.kb_path = Path(__file__).resolve().parents[1] / "rag" / "data" / "knowledge_base.txt"
         print(f"RAG KB path: {self.kb_path} (exists={self.kb_path.exists()})")
 
-    def _chunk_text(self, text: str) -> list[str]:
+    def _chunk_text(self, text: str) -> List[str]:
         """Split text into chunks separated by one or more blank lines."""
         raw_chunks = re.split(r"\n\s*\n", text.strip())
         return [chunk.strip() for chunk in raw_chunks if chunk.strip()]
