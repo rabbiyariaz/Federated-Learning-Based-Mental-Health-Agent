@@ -15,6 +15,14 @@ SESSION_EXPIRE_DAYS = 30
 security = HTTPBearer()
 
 
+def _as_utc_aware(dt):
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _create_session_token(session_id: str, token_type: str, expires_delta: timedelta):
     expire = datetime.now(timezone.utc) + expires_delta
     to_encode = {
@@ -73,7 +81,8 @@ def verify_token(
     if existing_session.is_revoked:
         raise HTTPException(status_code=401, detail="Session revoked")
 
-    if existing_session.expires_at < now:
+    expires_at = _as_utc_aware(existing_session.expires_at)
+    if expires_at and expires_at < now:
         raise HTTPException(status_code=401, detail="Session expired")
 
     existing_session.last_active_at = now
