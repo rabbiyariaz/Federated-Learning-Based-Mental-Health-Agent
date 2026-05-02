@@ -13,6 +13,8 @@ def test_create_session(client):
     data = response.json()
     assert "access_token" in data
     assert data["token_type"] == "bearer"
+    assert "recovery_code" in data
+    assert data["recovery_code"]
 
     payload = jwt.decode(data["access_token"], SECRET_KEY, algorithms=[ALGORITHM])
     assert "session_id" in payload
@@ -144,3 +146,36 @@ def test_session_row_has_lifecycle_fields(client, db_session):
     assert session.expires_at is not None
     assert session.last_active_at is not None
     assert session.created_at is not None
+    assert session.recovery_code_hash is not None
+
+
+def test_restore_session_with_recovery_code(client):
+    create_response = client.post("/api/sessions/create")
+    assert create_response.status_code == 200
+
+    create_payload = create_response.json()
+    create_token = create_payload["access_token"]
+    recovery_code = create_payload["recovery_code"]
+
+    create_decoded = jwt.decode(create_token, SECRET_KEY, algorithms=[ALGORITHM])
+    original_session_id = create_decoded["session_id"]
+
+    restore_response = client.post(
+        "/api/sessions/restore",
+        json={"recovery_code": recovery_code},
+    )
+
+    assert restore_response.status_code == 200
+    restore_token = restore_response.json()["access_token"]
+    restore_decoded = jwt.decode(restore_token, SECRET_KEY, algorithms=[ALGORITHM])
+
+    assert restore_decoded["session_id"] == original_session_id
+
+
+def test_restore_session_rejects_invalid_code(client):
+    response = client.post(
+        "/api/sessions/restore",
+        json={"recovery_code": "INVALID-CODE-1234"},
+    )
+
+    assert response.status_code == 401

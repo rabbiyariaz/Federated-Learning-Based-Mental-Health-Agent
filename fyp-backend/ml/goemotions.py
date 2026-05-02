@@ -3,6 +3,36 @@ import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from .config import ModelConfig
 
+import re  # already imported, just confirming
+
+NIHILISM_PATTERNS = [
+    r"\bnothing (really |even )?matters (anymore|now)?\b",
+    r"\bwhat'?s the point (of anything|anymore)\b",
+]
+
+EMPTINESS_PATTERNS = [
+    r"\b(just |honestly )?feel(ing)? empty\b",
+    r"\bnothing (left|inside)\b",
+    r"\bpoured everything.{0,30}nothing left\b",
+]
+
+def _apply_clinical_overrides(primary_emotion: str, text_lower: str) -> str:
+    """
+    Narrow, high-confidence overrides for two clinically significant
+    misclassification patterns. Only fires on unambiguous phrases.
+    """
+    # Nihilism — should never be anger
+    if primary_emotion in {"anger", "surprise", "joy"}:
+        if any(re.search(p, text_lower) for p in NIHILISM_PATTERNS):
+            return "sadness"
+
+    # Emptiness inversion — should never be joy
+    if primary_emotion in {"joy", "surprise"}:
+        if any(re.search(p, text_lower) for p in EMPTINESS_PATTERNS):
+            return "sadness"
+
+    return primary_emotion
+
 # Singleton pattern for model loading
 _model = None
 _tokenizer = None
@@ -108,6 +138,9 @@ def predict_emotion(text: str) -> dict:
     # -------------------------
     # 5️⃣ Threshold filtering
     # -------------------------
+
+    primary_emotion = _apply_clinical_overrides(primary_emotion, text.lower())
+
     threshold = 0.15
     max_emotions = 4
 

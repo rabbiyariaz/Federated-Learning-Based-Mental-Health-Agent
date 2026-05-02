@@ -1,5 +1,5 @@
 from app.routers import chat
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from ml.inference.inference_engine import InferenceService
@@ -28,6 +28,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def expose_generated_recovery_code(request: Request, call_next):
+    response = await call_next(request)
+    recovery_code = getattr(request.state, "generated_recovery_code", None)
+    if recovery_code:
+        response.headers["X-Recovery-Code"] = recovery_code
+        response.headers["Access-Control-Expose-Headers"] = "X-Recovery-Code"
+    return response
 
 service = None
 
