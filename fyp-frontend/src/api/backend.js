@@ -2,6 +2,17 @@ const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000")
   .trim()
   .replace(/\/+$/, "");
 
+const SESSION_RESTORE_FLAG = "sessionRestoreRequired";
+let sessionBootstrapPromise = null;
+
+export class SessionExpiredError extends Error {
+  constructor(message = "Session expired. Restore it or start a new one.") {
+    super(message);
+    this.name = "SessionExpiredError";
+    this.code = "SESSION_EXPIRED";
+  }
+}
+
 
 /**
  * Check if JWT token has already expired
@@ -18,6 +29,52 @@ function isTokenExpired(token) {
 }
 
 
+function setSessionRestoreRequired(message) {
+  localStorage.setItem(SESSION_RESTORE_FLAG, "true");
+  window.dispatchEvent(
+    new CustomEvent("session:restore-required", {
+      detail: { message },
+    })
+  );
+}
+
+
+function clearSessionRestoreRequired() {
+  localStorage.removeItem(SESSION_RESTORE_FLAG);
+}
+
+
+function emitRecoveryCodeIfPresent(res) {
+  const recoveryCode = res.headers.get("X-Recovery-Code");
+  if (recoveryCode) {
+    window.dispatchEvent(
+      new CustomEvent("session:recovery-code", {
+        detail: { recoveryCode },
+      })
+    );
+  }
+  return res;
+}
+
+
+async function touchSession(token) {
+  const res = await fetch(`${BASE_URL}/api/sessions/me`, {
+    headers: {
+      "Authorization": `Bearer ${token}`,
+    },
+  });
+
+  emitRecoveryCodeIfPresent(res);
+
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(`Session touch failed: ${res.status} ${msg}`);
+  }
+
+  return res.json();
+}
+
+
 async function createSession() {
   const res = await fetch(`${BASE_URL}/api/sessions/create`, {
     method: "POST",
@@ -28,26 +85,69 @@ async function createSession() {
     throw new Error(`Session creation failed: ${res.status} ${msg}`);
   }
 
+  emitRecoveryCodeIfPresent(res);
   return res.json();
 }
 
 
-/**
- * Get existing token or create new session
- * Automatically refreshes token if expiring within 5 minutes
- */
 export async function getOrCreateToken() {
+  const result = await bootstrapSession();
+  return result.token;
+}
+
+export async function bootstrapSession() {
   const existingToken = localStorage.getItem("token");
 
-  if (existingToken) {
-    if (!isTokenExpired(existingToken)) {
-      return existingToken;
-    }
-    localStorage.removeItem("token");
+  if (!existingToken) {
+    setSessionRestoreRequired("No session found. Restore it or start a new one.");
+    throw new SessionExpiredError();
   }
 
+  if (isTokenExpired(existingToken)) {
+    localStorage.removeItem("token");
+    setSessionRestoreRequired("Your session expired. Restore it.");
+    throw new SessionExpiredError();
+  }
+
+  try {
+    await touchSession(existingToken);
+    return { token: existingToken, recoveryCode: null, created: false };
+  } catch (err) {
+    localStorage.removeItem("token");
+    setSessionRestoreRequired("Session invalid. Restore it.");
+    throw new SessionExpiredError();
+  }
+}
+
+
+export async function startNewSession() {
+  clearSessionRestoreRequired();
+  localStorage.removeItem("token");
   const data = await createSession();
   localStorage.setItem("token", data.access_token);
+  return {
+    token: data.access_token,
+    recoveryCode: data.recovery_code ?? null,
+  };
+}
+
+
+export async function restoreSession(recoveryCode) {
+  const res = await fetch(`${BASE_URL}/api/sessions/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recovery_code: recoveryCode }),
+  });
+
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(`Session restore failed: ${res.status} ${msg}`);
+  }
+
+  emitRecoveryCodeIfPresent(res);
+  const data = await res.json();
+  localStorage.setItem("token", data.access_token);
+  clearSessionRestoreRequired();
   return data.access_token;
 }
 
@@ -89,19 +189,12 @@ export async function submitPHQ(payload) {
     body: JSON.stringify(payload)
   });
 
-  // On 401, try refreshing token once
+  emitRecoveryCodeIfPresent(res);
+
   if (res.status === 401) {
     localStorage.removeItem("token");
-    token = await getOrCreateToken();
-
-    res = await fetch(`${BASE_URL}/phq`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
-      body: JSON.stringify(payload)
-    });
+    setSessionRestoreRequired("Your session expired. Restore it with your recovery code or start a new one.");
+    throw new SessionExpiredError();
   }
 
   if (!res.ok) {
@@ -128,18 +221,12 @@ export async function submitEMA(payload) {
     body: JSON.stringify(payload)
   });
 
+  emitRecoveryCodeIfPresent(res);
+
   if (res.status === 401) {
     localStorage.removeItem("token");
-    token = await getOrCreateToken();
-
-    res = await fetch(`${BASE_URL}/ema`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
-      body: JSON.stringify(payload)
-    });
+    setSessionRestoreRequired("Your session expired. Restore it with your recovery code or start a new one.");
+    throw new SessionExpiredError();
   }
 
   if (!res.ok) {
@@ -163,15 +250,12 @@ export async function fetchEMATodayStatus() {
     }
   });
 
+  emitRecoveryCodeIfPresent(res);
+
   if (res.status === 401) {
     localStorage.removeItem("token");
-    token = await getOrCreateToken();
-
-    res = await fetch(`${BASE_URL}/ema/today-status?check_date=${localDate}`, {
-      headers: {
-        "Authorization": `Bearer ${token}`
-      }
-    });
+    setSessionRestoreRequired("Your session expired. Restore it with your recovery code or start a new one.");
+    throw new SessionExpiredError();
   }
 
   if (!res.ok) {
@@ -198,18 +282,12 @@ export async function submitTextEntry(text) {
     body: JSON.stringify({ text })
   });
 
+  emitRecoveryCodeIfPresent(res);
+
   if (res.status === 401) {
     localStorage.removeItem("token");
-    token = await getOrCreateToken();
-
-    res = await fetch(`${BASE_URL}/text-entries`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
-      body: JSON.stringify({ text })
-    });
+    setSessionRestoreRequired("Your session expired. Restore it with your recovery code or start a new one.");
+    throw new SessionExpiredError();
   }
 
   if (!res.ok) {
@@ -233,16 +311,12 @@ export async function fetchReport(signal) {
     }
   });
 
+  emitRecoveryCodeIfPresent(res);
+
   if (res.status === 401) {
     localStorage.removeItem("token");
-    token = await getOrCreateToken();
-
-    res = await fetch(`${BASE_URL}/report`, {
-      signal,
-      headers: {
-        "Authorization": `Bearer ${token}`
-      }
-    });
+    setSessionRestoreRequired("Your session expired. Restore it with your recovery code or start a new one.");
+    throw new SessionExpiredError();
   }
 
   if (!res.ok) {
@@ -263,16 +337,12 @@ export async function fetchWeeklyTextRisk(signal) {
     }
   });
 
+  emitRecoveryCodeIfPresent(res);
+
   if (res.status === 401) {
     localStorage.removeItem("token");
-    token = await getOrCreateToken();
-
-    res = await fetch(`${BASE_URL}/report/weekly-text-risk`, {
-      signal,
-      headers: {
-        "Authorization": `Bearer ${token}`
-      }
-    });
+    setSessionRestoreRequired("Your session expired. Restore it with your recovery code or start a new one.");
+    throw new SessionExpiredError();
   }
 
   if (!res.ok) {
@@ -294,15 +364,12 @@ export async function fetchDashboardSummary() {
     }
   });
 
+  emitRecoveryCodeIfPresent(res);
+
   if (res.status === 401) {
     localStorage.removeItem("token");
-    token = await getOrCreateToken();
-
-    res = await fetch(`${BASE_URL}/api/study/summary`, {
-      headers: {
-        "Authorization": `Bearer ${token}`
-      }
-    });
+    setSessionRestoreRequired("Your session expired. Restore it with your recovery code or start a new one.");
+    throw new SessionExpiredError();
   }
 
   if (!res.ok) {

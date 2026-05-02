@@ -13,6 +13,7 @@ class Session(Base):
     expires_at = Column(DateTime, nullable=False, index=True)
     last_active_at = Column(DateTime, nullable=False, index=True)
     is_revoked = Column(Boolean, nullable=False, default=False, index=True)
+    recovery_code_hash = Column(String, unique=True, nullable=True, index=True)
 
 
 class PHQAssessment(Base):
