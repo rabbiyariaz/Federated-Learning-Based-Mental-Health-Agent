@@ -8,6 +8,10 @@ class SessionCreate(BaseModel):
     pass
 
 
+class RecoveryCodeRequest(BaseModel):
+    recovery_code: str
+
+
 class SessionResponse(BaseModel):
     session_id: str
     created_at: datetime
@@ -20,6 +24,7 @@ class SessionResponse(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str
+    recovery_code: str | None = None
 
 class PHQCreate(BaseModel):
     responses: Dict[str, int]
