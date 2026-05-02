@@ -1,5 +1,5 @@
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, JSON, Date, UniqueConstraint, Text, ForeignKey
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from app.database import Base
 from sqlalchemy.sql import func
 
@@ -9,6 +9,9 @@ class Session(Base):
 
     session_id = Column(String, unique=True,primary_key=True, nullable=False, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime, nullable=False, index=True)
+    last_active_at = Column(DateTime, nullable=False, index=True)
+    is_revoked = Column(Boolean, nullable=False, default=False, index=True)
 
 
 class PHQAssessment(Base):

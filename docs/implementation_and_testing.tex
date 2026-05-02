@@ -1,0 +1,238 @@
+\chapter{Implementation and Testing}
+
+\section{Introduction}
+
+This chapter explains how the proposed mental health support system was implemented and evaluated in practice. The implementation combines a React-based patient interface, a FastAPI backend, PostgreSQL-backed persistence, and an ML layer for emotion classification, risk estimation, and retrieval-augmented responses. The testing strategy covers backend unit tests, integration tests, and scenario-based validation of the weekly text-risk pipeline.
+
+\section{Development Environment Setup}
+
+\subsection{Hardware and Operating System}
+
+Development was carried out on a Windows workstation. The repository does not record the exact CPU and GPU model used during development, so the final report should include the local machine specification here. The codebase is compatible with CPU-based execution, and no Docker-based training or deployment pipeline is present in the repository.
+
+\subsection{Python and Node.js Environment}
+
+The backend was developed inside a Python virtual environment located at \texttt{fyp-backend/.venv}. The configured environment uses Python 3.12.8. The frontend was developed with Node.js 22.11.0 and Vite.
+
+\subsection{Core Libraries and Versions}
+
+The backend dependencies recorded in \texttt{fyp-backend/requirements.txt} include FastAPI 0.136.1, Uvicorn 0.46.0, SQLAlchemy 2.0.49, Psycopg2 2.9.12, Pydantic 2.13.3, Python-JOSE 3.5.0, PyTest 9.0.3, Torch 2.11.0, Transformers 5.6.2, and the Hugging Face ecosystem packages \texttt{huggingface\_hub}, \texttt{tokenizers}, and \texttt{safetensors}. The frontend uses React 19.2.0, React DOM 19.2.0, React Router DOM 7.10.1, Chart.js 4.5.1, and React Chart.js 2 5.3.1.
+
+\subsection{Version Control and Project Structure}
+
+The project is organised as a two-tier repository with separate backend and frontend roots:
+
+\begin{itemize}
+  \item \texttt{fyp-backend/} for FastAPI, database models, ML services, and tests.
+  \item \texttt{fyp-frontend/} for the React application, page components, charts, and client-side API helpers.
+  \item \texttt{docs/} for supporting documentation and report material.
+\end{itemize}
+
+This separation mirrors the runtime boundary between client and server and matches the architecture used in the implementation.
+
+\section{System Architecture Implementation}
+
+\subsection{Architecture to Code Mapping}
+
+The implemented system follows a layered client--server structure. The React frontend in \texttt{fyp-frontend/src} handles presentation, routing, chart rendering, and user interaction. The FastAPI backend in \texttt{fyp-backend/app} exposes REST endpoints for sessions, PHQ assessments, EMA submissions, reports, study summaries, text entries, and chat. The ML layer lives under \texttt{fyp-backend/ml}, where inference, retrieval, and weekly risk analysis services are encapsulated.
+
+At runtime, the frontend sends authenticated requests to the backend API. The backend then validates the request, stores or retrieves data from the database, and invokes the ML layer where needed. This separation keeps the presentation logic independent from business rules and persistence logic.
+
+\subsection{Client--Server Separation}
+
+The client side is implemented as a single-page application using React Router. The main entry point in \texttt{src/App.jsx} defines routes for the home page, chat, PHQ questionnaire, EMA page, dashboard, report page, history, guide, screening, and admin dashboard. The backend is a standalone FastAPI application defined in \texttt{fyp-backend/app/main.py}, where CORS is enabled for local development on \texttt{localhost:5173} and \texttt{127.0.0.1:5173}.
+
+The ML layer is not exposed directly to the browser. Instead, it is called from the backend through the internal \texttt{InferenceService} and RAG services. This avoids leaking model logic into the frontend and allows the backend to enforce safety checks before returning a response.
+
+\subsection{Three-Layer Implementation in Practice}
+
+In practice, the presentation layer is formed by React pages and reusable components such as chat bubbles, input boxes, charts, and dashboard cards. The business layer is implemented by FastAPI routers and service modules, where request validation, scoring, aggregation, and safety rules are applied. The data layer is implemented through SQLAlchemy models and a relational schema backed by PostgreSQL during deployment and SQLite during testing.
+
+\subsection{Docker Containerisation}
+
+No Dockerfiles or \texttt{docker-compose} configuration were present in the repository at the time of writing. Therefore, the implementation described here is based on local development using the Python virtual environment and Node.js toolchain.
+
+\section{Database Implementation}
+
+\subsection{PostgreSQL Schema}
+
+The database layer is defined in \texttt{fyp-backend/app/models.py}. The implemented schema contains the following main tables:
+
+\begin{itemize}
+  \item \texttt{sessions}: stores anonymous participant session identifiers, creation time, expiry time, last activity, and revocation status.
+  \item \texttt{phq\_assessments}: stores PHQ responses, total score, severity level, and submission timestamp.
+  \item \texttt{ema\_entries}: stores daily EMA responses with a unique constraint on \texttt{user\_id} and \texttt{date\_submitted} to prevent duplicate submissions.
+  \item \texttt{text\_entries}: stores free-text reflections used by the weekly text-risk pipeline.
+\end{itemize}
+
+Although the project brief mentions users, appointments, reminders, vitals, and conversation logs, the implemented schema in the repository focuses on anonymous sessions, PHQ assessments, EMA entries, text entries, and report data. The report should reflect the implemented tables rather than a hypothetical schema.
+
+\subsection{Knowledge Base Storage}
+
+The chat assistant uses a local knowledge base file stored under \texttt{fyp-backend/ml/rag/data/knowledge\_base.txt}. The retrieval service chunks the document using blank-line separation, scores chunks against query keywords, and returns the top matching passages. The content is treated as a curated knowledge base containing CBT-style guidance, coping advice, sleep advice, service referrals, and safety rules. In the current implementation, this knowledge base is file-based rather than stored in a vector database.
+
+\subsection{SQLite Prototype Versus PostgreSQL Deployment}
+
+The testing environment uses SQLite in-memory through \texttt{tests/conftest.py}, where SQLAlchemy creates the schema for each test case. The production configuration is PostgreSQL-oriented through \texttt{DATABASE\_URL} in \texttt{app/config.py}, which is loaded from the backend \texttt{.env} file. This allowed rapid local testing with SQLite while preserving compatibility with PostgreSQL for deployment.
+
+\section{Backend Implementation (FastAPI REST API)}
+
+\subsection{API Endpoint Design}
+
+The backend exposes the following major endpoints:
+
+\begin{itemize}
+  \item \texttt{GET /health} for service health checks.
+  \item \texttt{POST /predict} for lazy-loaded ML inference.
+  \item \texttt{POST /api/sessions/create} and \texttt{POST /api/sessions/refresh} for anonymous session token management.
+  \item \texttt{POST /phq} for PHQ-8 submission.
+  \item \texttt{POST /ema} and \texttt{GET /ema/today-status} for EMA workflows.
+  \item \texttt{GET /report} for combined PHQ and EMA reporting.
+  \item \texttt{GET /report/weekly-text-risk} for weekly risk analysis from text reflections.
+  \item \texttt{GET /api/study/summary} for dashboard summaries.
+  \item \texttt{POST /chat} for support chat responses.
+  \item \texttt{POST /text-entries}, \texttt{GET /text-entries}, and \texttt{GET /text-entries/count} for journal reflection storage and analysis readiness.
+\end{itemize}
+
+\subsection{Authentication}
+
+Authentication is implemented using bearer tokens with JSON Web Tokens. The session router creates a random UUID session identifier, stores it in the \texttt{sessions} table, and issues both access and refresh tokens. The token payload contains the session ID and token type. The backend then validates access tokens in \texttt{app/auth.py} by checking token integrity, session existence, revocation status, and expiry.
+
+This is not a password-based login system. Instead, it is an anonymous participant model designed for study-based use while still maintaining traceable server-side sessions.
+
+\subsection{Connection to ML Inference}
+
+The backend connects to the ML layer through \texttt{InferenceService} in \texttt{ml/inference/inference\_engine.py}. The inference service loads two models: \texttt{GoEmotionsModel} for emotion prediction and \texttt{DAICModel} for PHQ-related risk scoring. The \texttt{/predict} endpoint lazily initialises this service on first use, keeping startup cost lower and avoiding unnecessary model loading when the API is idle.
+
+\subsection{Request--Response Flow Example}
+
+The following simplified flow shows how a request travels through the backend:
+
+\begin{verbatim}
+Frontend -> POST /chat
+         -> backend validates payload
+         -> RAGService retrieves relevant context
+         -> rule-based safety and intent checks run
+         -> response text is assembled
+         -> JSON response returns to the frontend
+\end{verbatim}
+
+In the chat route, crisis language is handled first, followed by greeting detection, vague-input handling, and intent-specific prompts. If no special rule matches, the backend retrieves relevant context from the knowledge base and returns a grounded response.
+
+\section{Frontend Implementation (React.js)}
+
+\subsection{Component Structure}
+
+The patient application is organised into pages and reusable components. Main pages include \texttt{ChatPage}, \texttt{DashboardPage}, \texttt{ReportPage}, \texttt{PHQPage}, \texttt{EMAPage}, \texttt{ScreeningPage}, \texttt{HistoryPage}, \texttt{GuidePage}, and \texttt{AdminDashboardPage}. Supporting components include \texttt{ChatMessage}, \texttt{ChatInput}, \texttt{MetricsChart}, \texttt{MoodQuestions}, \texttt{ScreeningResults}, \texttt{RoundTimeline}, and \texttt{ClientNode}.
+
+\subsection{Chat Interface}
+
+The chat interface is implemented in \texttt{src/pages/ChatPage.jsx}. Messages are stored in React state, with the initial assistant greeting inserted on page load. When the user submits a message, the UI appends the user message immediately, sends the current conversation history to the backend, and then appends the agent response once the API call completes. The page also auto-scrolls to the latest message and saves conversation history for later review.
+
+\subsection{Clinician Dashboard Visualisation}
+
+The clinician-facing summary and progress views use Chart.js through \texttt{react-chartjs-2}. The dashboard page pulls EMA and PHQ summaries from the backend and renders line charts for symptom trends and a bar chart for PHQ totals. This gives an at-a-glance view of mood, anhedonia, fatigue, self-criticism, cognition, and sleep trends.
+
+\subsection{State Management and API Integration}
+
+State is managed locally with React hooks such as \texttt{useState}, \texttt{useEffect}, and \texttt{useMemo}. The app initialises an anonymous session token at startup, checks backend health, and then passes the bearer token with requests to protected endpoints. This lightweight state model is sufficient for the current study prototype because persistence is handled on the server.
+
+\section{AI/ML Models Implementation}
+
+\subsection{Dataset Preparation}
+
+The repository contains ML modules for GoEmotions- and DAIC-based processing, together with text-entry services for weekly risk analysis. The codebase references mental-health dialogue and symptom-related text, but the raw training datasets are not stored in the repository. For the report, the dataset discussion should therefore describe the open-source sources actually used in your model training process, such as EmpatheticDialogues, DAIC-WOZ, or GoEmotions, and should align with the model artefacts saved in \texttt{models/}.
+
+During preprocessing, text is normalised, tokenised, and mapped to labels for emotion or risk classification. In the weekly text-risk pipeline, reflections are extracted from the last seven days and passed into the DAIC-based model service.
+
+\subsection{Simulated Federated Clients}
+
+The repository includes federated learning-themed UI components such as client nodes and a timeline, but the available backend code does not contain a complete Flower client/server training implementation. If federated experiments were run externally, they should be documented here as simulation-based client partitions, with the partitioning strategy, number of clients, and IID or non-IID split clearly stated.
+
+\subsection{Emotion and Intent Classifier}
+
+The inference layer loads an emotion classifier and a DAIC-based risk model. The emotion classifier is represented in the codebase by \texttt{GoEmotionsModel}, which produces a primary emotion and a set of dominant emotions. The risk model represented by \texttt{DAICModel} outputs a text-risk level and score. Together, these models form the core classifier pipeline used by the chat and report features.
+
+\subsection{Training Loop and Fine-Tuning}
+
+The repository does not include the full training script for the DistilBERT fine-tuning process. For the report, this subsection should describe the training hyperparameters you used in your experiments, such as learning rate, batch size, epoch count, and any PEFT/LoRA configuration if it was applied. If the final model was exported as an artefact in \texttt{models/}, that should be cited as the trained inference output.
+
+\section{Federated Learning Implementation (Flower Framework)}
+
+\subsection{FL Simulation}
+
+The codebase currently shows FL-oriented visual components, but no executable Flower training loop was present in the inspected backend files. If federated learning was implemented in an external script or notebook, the chapter should describe the number of simulated clients, the data partitioning strategy, and the local update schedule used for each client.
+
+\subsection{Aggregation Strategy}
+
+The report should explain how the server aggregates client models, typically using FedAvg. Where differential privacy was applied, the DP mechanism, clipping norm, and privacy budget parameters \(\epsilon\) and \(\delta\) should be recorded. If DP was not used, the report should state that privacy was achieved through decentralised training design and anonymous session handling rather than formal DP guarantees.
+
+\subsection{Global Model Export}
+
+After aggregation, the global model should be exported as a reusable inference artefact. In the repository, the runtime inference path is handled by the backend ML service loader, which suggests that trained model files are loaded from disk rather than being generated dynamically at request time.
+
+\section{RAG Pipeline Implementation}
+
+\subsection{Knowledge Base Preparation}
+
+The chat assistant uses a curated local knowledge base file. The retrieval layer treats the document as a set of chunks and prioritises passages related to coping, sleep, services, PHQ, anxiety, low mood, and study support. Safety-related content is also filtered so that support guidance is returned before generic advice.
+
+\subsection{Chunking and Retrieval}
+
+Chunking is performed by splitting the text on blank lines. The service then extracts keywords from the user message, scores chunks by keyword overlap, boosts chunks that match a preferred topic tag, and returns the top three chunks. If no good match is found, the assistant falls back to a clarification or a safe, generic response.
+
+\subsection{Embedding Model}
+
+The current repository implementation does not show a vector embedding model such as BAAI/bge-small-en or Sentence-BERT. Instead, retrieval is keyword-based over a local knowledge base. If an embedding model was used in a separate experiment, it should be documented as an extension beyond the checked-in code.
+
+\section{System Integration}
+
+\subsection{End-to-End Flow}
+
+The full integrated workflow is as follows: the user opens the React application, the frontend initialises an anonymous session, and the user submits a message or questionnaire response. The frontend sends the request to FastAPI with the bearer token. The backend validates the request and either stores the data in PostgreSQL or forwards text to the ML layer. The ML layer may classify emotion, estimate risk, or retrieve support context from the knowledge base. The backend then packages the result into JSON and returns it to the frontend for rendering.
+
+\subsection{Integration Challenges and Resolutions}
+
+The implementation addresses several practical integration issues. First, the backend uses lazy loading for heavier ML services so the API remains responsive. Second, the chat flow applies rule-based safety checks before RAG retrieval so crisis language is handled immediately. Third, the dashboard and report routes compute summaries on the server, reducing duplicate logic in the frontend. Finally, the front end uses local state and memoised chart data to keep the visualisation responsive while the backend handles data persistence.
+
+\section{Testing Methodology}
+
+\subsection{Unit Testing}
+
+Backend unit tests are implemented with PyTest under \texttt{fyp-backend/tests}. The tests validate EMA summary calculations, PHQ-related report logic, and trend computations in \texttt{analysis\_service.py}. These tests check both normal cases and edge cases such as empty data, missing fields, and trend direction changes.
+
+On the frontend side, the repository is set up with Jest-compatible tooling in the project brief, although no Jest test files were present in the inspected workspace. If frontend tests were executed externally, they should be documented here with the relevant component names.
+
+\subsection{Integration Testing}
+
+Integration tests in \texttt{tests/test\_integration\_flows.py} exercise the end-to-end backend workflow. They verify session creation, authenticated access, PHQ submission followed by report generation, EMA submission followed by dashboard summary generation, and handling of no-data states. These tests confirm that the API contract between the frontend and backend remains consistent.
+
+\subsection{Simulated User Testing}
+
+Simulated user testing is represented by the weekly text-risk integration script. The script checks multiple scenarios including insufficient reflections, positive reflections, mixed reflections, concerning reflections, and empty input. The pass criteria are based on the returned risk category, reflection count, and robust handling of edge cases.
+
+The scenario set used for evaluation should include crisis messages, general advice queries, appointment or reminder workflows where applicable, and neutral day-to-day chat. A scenario passes if the system returns a safe, coherent, and contextually appropriate response without crashing.
+
+\section{Evaluation and Results}
+
+\subsection{FL Versus Centralised Training Comparison}
+
+The repository does not include a complete experimental log comparing federated and centralised training runs, so the final report should only present numerical results if they were actually measured during experimentation. The intended comparison is between accuracy, F1-score, communication rounds, and privacy--utility trade-off. If these metrics were not captured in the repository, the report should note that the FL component is conceptually supported but not fully benchmarked in code.
+
+\subsection{Response Quality Evaluation}
+
+The chat assistant response quality is evaluated by checking whether the system returns safe, relevant, and grounded replies. The implemented repository does not include BLEU or ROUGE scoring scripts, so any such numbers should be reported only if they were generated elsewhere. In the current codebase, the most concrete quality check is whether the RAG response is grounded in the knowledge base and whether crisis messages are intercepted safely.
+
+\subsection{System Performance}
+
+The backend uses lazy loading for the ML inference service, which reduces startup cost but may add a one-time latency when the first prediction is requested. RAG retrieval time is constrained by local file reads and keyword scoring, which is lightweight compared with full neural retrieval. The React dashboard uses memoised chart data to keep rendering efficient, and the backend aggregation endpoints return precomputed summaries instead of pushing raw processing to the browser.
+
+\subsection{Critical Analysis Against Requirements}
+
+The implemented system satisfies the core requirements of anonymous session handling, symptom tracking, daily EMA capture, PHQ assessment, chat support, dashboard visualisation, weekly text-risk analysis, and report generation. However, the repository does not show a complete Docker deployment, an embedding-based RAG index, or a fully documented Flower training pipeline. These gaps should be described honestly as limitations rather than being presented as completed deliverables.
+
+\section{Summary}
+
+The implementation produced a working full-stack prototype with a React frontend, FastAPI backend, persistent database models, summary and reporting services, and a hybrid chat layer combining safety rules with retrieval-augmented support content. The key result is that the system can collect mental-health related inputs, store them securely under anonymous sessions, generate symptom summaries, and surface supportive responses in a structured workflow.
+
+The remaining limitations are primarily around experimental completeness: the repository does not document full training scripts, federated learning benchmark logs, Docker deployment files, or embedding-based retrieval infrastructure. These limitations should be stated clearly in the report and positioned as future work rather than hidden.

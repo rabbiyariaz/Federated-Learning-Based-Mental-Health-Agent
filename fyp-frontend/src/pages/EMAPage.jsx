@@ -80,10 +80,11 @@ export default function EMAPage() {
   const [todayDate, setTodayDate] = useState(new Date().toDateString());
   const [error, setError] = useState(null);
   const [isCheckingStatus, setIsCheckingStatus] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   /**
    * Initialize component: Check if EMA already submitted today
-   * Compare stored date with current date
+   * This prevents showing the form if user already submitted today
    */
   useEffect(() => {
     const checkTodayStatus = async () => {
@@ -94,7 +95,9 @@ export default function EMAPage() {
           setError("Today's EMA has already been submitted. You can submit again tomorrow.");
         }
       } catch (err) {
-        setError(err.message || "Could not check today's EMA status.");
+        // If status check fails, still allow form but will catch duplicate on submit
+        console.warn("Could not check today's EMA status:", err);
+        setError(null); // Don't show error to user yet, they can still try submitting
       } finally {
         setIsCheckingStatus(false);
       }
@@ -159,16 +162,23 @@ export default function EMAPage() {
 
     if (!isFormComplete()) return;
 
+    // Prevent double submissions
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     let sessionId;
 
     try {
       sessionId = await getOrCreateToken();
     } catch (err) {
       setError("Could not create token. Try again.");
+      setIsSubmitting(false);
       return;
     }
 
-    const todayISODate = new Date().toISOString().split("T")[0];
+    // Get LOCAL date (not UTC) to match user's calendar day
+    const today = new Date();
+    const todayISODate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
     const payload = {
       user_id: sessionId,
@@ -189,9 +199,18 @@ export default function EMAPage() {
       setSubmissionStatus("submitted");
       window.scrollTo(0, 0);
     } catch (err) {
-      if (err.message && err.message.includes("400")) {
+      setIsSubmitting(false);
+      
+      // Check if duplicate submission error - treat as "already_submitted" state
+      const isDuplicate = err.message && (
+        err.message.includes("400") || 
+        err.message.includes("already submitted") ||
+        err.message.includes("duplicate")
+      );
+      
+      if (isDuplicate) {
         setError("Today's EMA has already been submitted. You can submit again tomorrow.");
-        setSubmissionStatus("already_submitted");
+        setSubmissionStatus("already_submitted"); // Show the "already submitted" screen
       } else {
         setError(err.message || "Submission failed. Try again.");
         setSubmissionStatus("error");
@@ -474,14 +493,24 @@ export default function EMAPage() {
           <div className="mt-8">
             <button
               type="submit"
-              disabled={!isFormComplete()}
-              className={`w-full py-3 px-6 rounded-lg font-semibold transition-all duration-200 ${
-                isFormComplete()
-                  ? 'bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer'
-                  : 'bg-gray-300 text-gray-600 cursor-not-allowed'
+              disabled={!isFormComplete() || isSubmitting}
+              className={`w-full py-3 px-6 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${
+                !isFormComplete() || isSubmitting
+                  ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer'
               }`}
             >
-              Submit Daily Check-in
+              {isSubmitting ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Submitting...
+                </>
+              ) : (
+                'Submit Daily Check-in'
+              )}
             </button>
           </div>
 

@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from datetime import date
+from datetime import date, timedelta, datetime
 from app.database import get_db
 from app.models import EMAEntry
 from app.schemas import EMACreate
-from datetime import timedelta
 from app.auth import verify_token
 
 
@@ -23,10 +22,20 @@ router = APIRouter(prefix="/ema")
 
 @router.get("/today-status")
 def get_today_status(
+    check_date: str = None,  # Optional: client can send their local date
     session_id: str = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
-    today = date.today()
+    # Use client's date if provided, otherwise use server's local date
+    if check_date:
+        try:
+            # Parse the date string from client (format: YYYY-MM-DD)
+            today = datetime.strptime(check_date, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            today = date.today()
+    else:
+        today = date.today()
+    
     already_submitted = (
         db.query(EMAEntry)
         .filter(EMAEntry.user_id == session_id, EMAEntry.date_submitted == today)
@@ -48,8 +57,8 @@ def submit_ema(payload: EMACreate,
     if payload.date_submitted < date.today() - timedelta(days=30):
         raise HTTPException(status_code=400, detail="Invalid EMA date")
     
-
-    if payload.date_submitted > date.today():
+    # Allow submissions up to tomorrow (to handle timezone differences)
+    if payload.date_submitted > date.today() + timedelta(days=1):
         raise HTTPException(
         status_code=400,
         detail="Future dates are not allowed"
@@ -81,7 +90,20 @@ def submit_ema(payload: EMACreate,
             detail="Invalid 5_type value"
         )
 
-    # 5️⃣ Create DB record
+    # 5️⃣ Pre-check: Prevent duplicate submissions
+    existing = (
+        db.query(EMAEntry)
+        .filter(EMAEntry.user_id == session_id, EMAEntry.date_submitted == payload.date_submitted)
+        .first()
+    )
+
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="EMA already submitted for this date. You can submit again tomorrow."
+        )
+
+    # 6️⃣ Create DB record
     record = EMAEntry(
         user_id=session_id, 
         date_submitted=payload.date_submitted,
@@ -95,7 +117,7 @@ def submit_ema(payload: EMACreate,
         db.rollback()
         raise HTTPException(
             status_code=400,
-            detail="EMA already submitted for this date"
+            detail="EMA already submitted for this date. You can submit again tomorrow."
         )
 
     return {

@@ -186,6 +186,42 @@ const latestPhq = sortedPhq.length > 0
 const previousPhq = sortedPhq.length > 1
   ? sortedPhq[sortedPhq.length - 2]
   : null;
+const getDepressionSeverityLabel = (score) => {
+  if (score === null || score === undefined) {
+    return "No data";
+  }
+
+  if (score < 5) {
+    return "Minimal";
+  }
+
+  if (score < 10) {
+    return "Mild";
+  }
+
+  if (score < 15) {
+    return "Moderate";
+  }
+
+  return "Severe";
+};
+
+const getMoodVariabilityLabel = (value) => {
+  if (value === null || value === undefined) {
+    return "No data";
+  }
+
+  if (value < 1.5) {
+    return "Low";
+  }
+
+  if (value < 3) {
+    return "Moderate";
+  }
+
+  return "High";
+};
+
 const phqBarData = latestPhq
   ? {
       labels: previousPhq
@@ -442,30 +478,31 @@ const phqBarData = latestPhq
         </div>
         <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
   <h2 className="text-xl font-semibold text-gray-900 mb-4">
-  Recent 7-Day EMA Summary
+  Overall EMA Summary
 </h2>
 
 {ema.length >= 2 && ema_summary ? (
-  <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-sm">
-    
+  <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-sm">
+
     <div>
-      <p className="text-gray-600">Adherence</p>
+      <p className="text-gray-600">Depressive Symptom Intensity (0-20 scale)</p>
       <p className="font-semibold text-gray-900 text-lg">
-        {ema_summary.adherence_percent}%
+        {ema_summary.weekly_avg_depression?.toFixed(2)} / 20
+      </p>
+      <p className="text-xs text-emerald-700 font-semibold mt-1">
+        {getDepressionSeverityLabel(ema_summary.weekly_avg_depression)}
       </p>
     </div>
 
     <div>
-      <p className="text-gray-600">Avg Depression</p>
-      <p className="font-semibold text-gray-900 text-lg">
-        {ema_summary.weekly_avg_depression?.toFixed(2)}
+      <p className="text-gray-600">
+        Mood Variability ({ema.length} day{ema.length === 1 ? "" : "s"})
       </p>
-    </div>
-
-    <div>
-      <p className="text-gray-600">Mood Variability</p>
       <p className="font-semibold text-gray-900 text-lg">
         {ema_summary.mood_variability?.toFixed(2)}
+      </p>
+      <p className="text-xs text-emerald-700 font-semibold mt-1">
+        {getMoodVariabilityLabel(ema_summary.mood_variability)} variation
       </p>
     </div>
 
@@ -473,6 +510,9 @@ const phqBarData = latestPhq
       <p className="text-gray-600">Trend</p>
       <p className="font-semibold text-gray-900 text-lg">
         {ema_summary.trend_depression}
+      </p>
+      <p className="text-xs text-gray-500 mt-1">
+        (recent half vs. earlier half)
       </p>
     </div>
 

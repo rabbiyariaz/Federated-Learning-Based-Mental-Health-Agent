@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, date
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.models import EMAEntry, PHQAssessment
@@ -57,9 +57,11 @@ def generate_report(
 
     latest_phq = phqs[0]
 
-    # 2️⃣ Define 7-day EMA window before latest PHQ
-    end_date = latest_phq.submitted_at.date()
-    start_date = end_date - timedelta(days=7)
+    # 2️⃣ Define a 7-day EMA window including today
+    # end_date = latest_phq.submitted_at.date()
+    end_date = date.today()
+    
+    start_date = end_date - timedelta(days=6)
 
     ema_entries = (
         db.query(EMAEntry)
