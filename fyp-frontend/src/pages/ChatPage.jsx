@@ -1,17 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import ChatMessage from '../components/ChatMessage';
 import ChatInput from '../components/ChatInput';
-import { sendChatMessage } from '../utils/api';
+import { sendChatMessage, getChatHistory, clearChatHistory } from '../utils/api';
 import { saveHistoryEntry } from '../utils/storage';
 
 function ChatPage() {
-  const [messages, setMessages] = useState([
-    {
-      text: "Hello! I'm here to listen and provide support. How are you feeling today? Feel free to share what's on your mind.",
-      type: 'agent',
-      timestamp: new Date().toISOString(),
-    },
-  ]);
+  const initialGreeting = {
+    text: "Hello! I'm here to listen and provide support. How are you feeling today? Feel free to share what's on your mind.",
+    type: 'agent',
+    timestamp: new Date().toISOString(),
+  };
+  const [messages, setMessages] = useState([initialGreeting]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -20,6 +19,37 @@ function ChatPage() {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await getChatHistory();
+        if (cancelled) return;
+        const history = data?.history;
+        if (history && history.length > 0) {
+          const converted = history.flatMap((entry) => [
+            {
+              text: entry.user_message,
+              type: 'user',
+              timestamp: entry.created_at,
+            },
+            {
+              text: entry.assistant_response,
+              type: 'agent',
+              timestamp: entry.created_at,
+            },
+          ]);
+          setMessages([initialGreeting, ...converted]);
+        }
+      } catch (error) {
+        console.warn('Could not load chat history:', error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
@@ -90,14 +120,39 @@ function ChatPage() {
     }
   };
 
+  const handleClearChat = async () => {
+    if (!window.confirm('Clear your saved chat history?')) {
+      return;
+    }
+    setIsLoading(true);
+    try {
+      await clearChatHistory();
+      setMessages([initialGreeting]);
+    } catch (error) {
+      console.error('Clear chat error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       {/* Header */}
-      <div className="mb-4">
-        <h1 className="text-3xl font-bold text-emerald-700 mb-2">Chat with Agent</h1>
-        <p className="text-slate-300 text-sm">
-          Have a conversation with the mental health AI agent. Share your thoughts and feelings.
-        </p>
+      <div className="mb-4 flex justify-between items-start gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-emerald-700 mb-2">Chat with Agent</h1>
+          <p className="text-slate-300 text-sm">
+            Have a conversation with the mental health AI agent. Share your thoughts and feelings.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleClearChat}
+          disabled={isLoading}
+          className="bg-red-600 hover:bg-red-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white text-sm font-semibold px-3 py-2 rounded-lg transition-colors"
+        >
+          Clear Chat
+        </button>
       </div>
 
       {/* Messages Container */}

@@ -1,3 +1,5 @@
+import { getOrCreateToken } from '../api/backend';
+
 /**
  * Mock API functions for the mental health AI agent
  * These will be replaced with real API calls later
@@ -109,19 +111,43 @@ export async function analyzeText(text, moodData = null) {
 //     response: response,
 //   };
 // }
+
+const CHAT_API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000")
+  .trim()
+  .replace(/\/+$/, "");
+
 export async function sendChatMessage(message, history = []) {
-  const res = await fetch("http://127.0.0.1:8000/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message,
-      history: (history || []).map(m => ({
-        text: m.text ?? "",
-        type: (m.type ?? m.sender ?? m.role ?? "").toString().toLowerCase() === "user" ? "user" : "agent",
-        timestamp: m.timestamp ?? null,
-      })),
-    }),
+  const body = JSON.stringify({
+    message,
+    history: (history || []).map(m => ({
+      text: m.text ?? "",
+      type: (m.type ?? m.sender ?? m.role ?? "").toString().toLowerCase() === "user" ? "user" : "agent",
+      timestamp: m.timestamp ?? null,
+    })),
   });
+
+  let token = await getOrCreateToken();
+  let res = await fetch(`${CHAT_API_BASE}/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body,
+  });
+
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    token = await getOrCreateToken();
+    res = await fetch(`${CHAT_API_BASE}/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body,
+    });
+  }
 
   if (!res.ok) {
     const txt = await res.text();
@@ -131,55 +157,95 @@ export async function sendChatMessage(message, history = []) {
   return await res.json();
 }
 
+export async function getChatHistory() {
+  let token = await getOrCreateToken();
+  let res = await fetch(`${CHAT_API_BASE}/chat/history`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
 
-/**
- * Fetches federated learning metrics for the admin dashboard
- * @returns {Promise<Object>} FL metrics including clients, rounds, and model status
- */
-export async function getFederatedMetrics() {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  // Mock federated learning data
-  const clients = [
-    { id: 'client-1', name: 'Client 1', status: 'active', dataSize: 1250, lastUpdate: new Date(Date.now() - 120000).toISOString() },
-    { id: 'client-2', name: 'Client 2', status: 'active', dataSize: 980, lastUpdate: new Date(Date.now() - 95000).toISOString() },
-    { id: 'client-3', name: 'Client 3', status: 'active', dataSize: 1520, lastUpdate: new Date(Date.now() - 110000).toISOString() },
-    { id: 'client-4', name: 'Client 4', status: 'training', dataSize: 875, lastUpdate: new Date(Date.now() - 30000).toISOString() },
-    { id: 'client-5', name: 'Client 5', status: 'idle', dataSize: 2100, lastUpdate: new Date(Date.now() - 300000).toISOString() },
-  ];
-
-  // Generate mock rounds with progressive improvement
-  const rounds = [];
-  const baseLoss = 0.8;
-  const baseAccuracy = 0.65;
-  
-  for (let i = 1; i <= 10; i++) {
-    const loss = Math.max(0.1, baseLoss - (i * 0.06) + (Math.random() * 0.05 - 0.025));
-    const accuracy = Math.min(0.95, baseAccuracy + (i * 0.025) + (Math.random() * 0.03 - 0.015));
-    
-    rounds.push({
-      round: i,
-      timestamp: new Date(Date.now() - (10 - i) * 60000).toISOString(),
-      loss: parseFloat(loss.toFixed(4)),
-      accuracy: parseFloat(accuracy.toFixed(4)),
-      clientsParticipated: Math.floor(Math.random() * 3) + 3, // 3-5 clients
-      trainingTime: Math.floor(Math.random() * 30) + 45, // 45-75 seconds
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    token = await getOrCreateToken();
+    res = await fetch(`${CHAT_API_BASE}/chat/history`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     });
   }
 
-  return {
-    clients,
-    rounds,
-    globalModel: {
-      status: 'training',
-      currentRound: 10,
-      totalRounds: 10,
-      aggregatedAt: new Date().toISOString(),
-      modelVersion: 'v1.0.10',
-      totalClients: clients.length,
-      activeClients: clients.filter(c => c.status === 'active' || c.status === 'training').length,
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Chat history failed: ${res.status} ${txt}`);
+  }
+
+  return await res.json();
+}
+
+export async function clearChatHistory() {
+  let token = await getOrCreateToken();
+  let res = await fetch(`${CHAT_API_BASE}/chat/history`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
     },
-  };
+  });
+
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    token = await getOrCreateToken();
+    res = await fetch(`${CHAT_API_BASE}/chat/history`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  }
+
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Clear chat history failed: ${res.status} ${txt}`);
+  }
+
+  return await res.json();
+}
+
+
+export async function getFederatedMetrics() {
+  const res = await fetch("http://127.0.0.1:8000/api/federated/metrics");
+
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Federated metrics API failed: ${res.status} ${txt}`);
+  }
+
+  return await res.json();
+}
+
+export async function simulateFederatedRound() {
+  const res = await fetch("http://127.0.0.1:8000/api/federated/rounds/simulate", {
+    method: "POST",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Federated round simulation failed: ${res.statusText}`);
+  }
+
+  return await res.json();
+}
+
+export async function resetFederatedSimulation() {
+  const res = await fetch("http://127.0.0.1:8000/api/federated/reset", {
+    method: "POST",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Federated reset failed: ${res.statusText}`);
+  }
+
+  return await res.json();
 }
 

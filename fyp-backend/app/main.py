@@ -3,7 +3,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from ml.inference.inference_engine import InferenceService
-from app.routers import ema, phq, report, study, session, text_entry
+from app.routers import ema, phq, report, study, session, text_entry, federated
+
+from app.database import Base, engine
+import app.models  # noqa: F401 - register ORM models on Base.metadata
+
+Base.metadata.create_all(bind=engine)
 
 
 
@@ -47,5 +52,6 @@ app.include_router(report.router)
 app.include_router(study.router)
 app.include_router(session.router)
 app.include_router(text_entry.router)
+app.include_router(federated.router)
 
 

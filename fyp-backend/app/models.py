@@ -1,8 +1,6 @@
-from sqlalchemy import Column, Integer, String, DateTime, JSON, Date, UniqueConstraint
-from datetime import datetime, timedelta, timezone
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, JSON, Date, UniqueConstraint, Text, ForeignKey
+from datetime import datetime, timezone
 from app.database import Base
-from sqlalchemy import ForeignKey
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.sql import func
 
 
@@ -67,3 +65,21 @@ class TextEntry(Base):
         nullable=False,
         index=True
     )
+
+
+class ChatEntry(Base):
+    __tablename__ = "chat_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        String,
+        ForeignKey("sessions.session_id"),
+        nullable=False,
+        index=True,
+    )
+    user_message = Column(Text, nullable=False)
+    assistant_response = Column(Text, nullable=False)
+    rag_mode = Column(String, nullable=True)
+    retrieved_tags = Column(JSON, nullable=True)
+    crisis_detected = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
