@@ -10,6 +10,8 @@ import app.models  # noqa: F401 - register ORM models on Base.metadata
 
 Base.metadata.create_all(bind=engine)
 
+from dotenv import load_dotenv
+load_dotenv()
 
 
 

@@ -39,6 +39,9 @@ def _try_save_chat_entry(
     retrieved_tags: Optional[list],
     crisis_detected: bool,
 ) -> None:
+    print("TRYING TO SAVE CHAT")  # 👈 MUST print
+    print("TRYING TO SAVE CHAT")
+
     try:
         entry = ChatEntry(
             user_id=session_id,
@@ -48,12 +51,18 @@ def _try_save_chat_entry(
             retrieved_tags=retrieved_tags,
             crisis_detected=crisis_detected,
         )
+
+        print("ENTRY CREATED")  # 👈 ADD
+
         db.add(entry)
+        print("ADDED TO SESSION")  # 👈 ADD
+
         db.commit()
+        print("CHAT SAVED SUCCESSFULLY")  # 👈 ADD
+
     except Exception as exc:
         db.rollback()
-        logger.warning("Failed to persist chat entry: %s", exc, exc_info=True)
-
+        print("DB ERROR:", exc)
 
 @router.get("/history")
 def get_chat_history(

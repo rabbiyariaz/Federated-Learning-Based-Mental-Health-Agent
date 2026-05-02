@@ -6,7 +6,7 @@ psycopg2-binary
 python-dotenv
 transformers
 torch
+sentence-transformers
 pytest
 python-jose
 groq
-python-dotenv
