@@ -68,7 +68,9 @@ async function touchSession(token) {
 
   if (!res.ok) {
     const msg = await res.text();
-    throw new Error(`Session touch failed: ${res.status} ${msg}`);
+    const err = new Error(`Session touch failed: ${res.status} ${msg}`);
+    err.status = res.status;
+    throw err;
   }
 
   return res.json();
@@ -90,6 +92,23 @@ async function createSession() {
 }
 
 
+async function createAndStoreSession() {
+  try {
+    const data = await createSession();
+    localStorage.setItem("token", data.access_token);
+    clearSessionRestoreRequired();
+    return {
+      token: data.access_token,
+      recoveryCode: data.recovery_code ?? null,
+      created: true,
+    };
+  } catch {
+    setSessionRestoreRequired("Session invalid. Restore it.");
+    throw new SessionExpiredError();
+  }
+}
+
+
 export async function getOrCreateToken() {
   const result = await bootstrapSession();
   return result.token;
@@ -99,23 +118,24 @@ export async function bootstrapSession() {
   const existingToken = localStorage.getItem("token");
 
   if (!existingToken) {
-    setSessionRestoreRequired("No session found. Restore it or start a new one.");
-    throw new SessionExpiredError();
+    return await createAndStoreSession();
   }
 
   if (isTokenExpired(existingToken)) {
     localStorage.removeItem("token");
-    setSessionRestoreRequired("Your session expired. Restore it.");
-    throw new SessionExpiredError();
+    return await createAndStoreSession();
   }
 
   try {
     await touchSession(existingToken);
+    clearSessionRestoreRequired();
     return { token: existingToken, recoveryCode: null, created: false };
   } catch (err) {
-    localStorage.removeItem("token");
-    setSessionRestoreRequired("Session invalid. Restore it.");
-    throw new SessionExpiredError();
+    if (err.status === 401) {
+      localStorage.removeItem("token");
+      return await createAndStoreSession();
+    }
+    throw err;
   }
 }
 
