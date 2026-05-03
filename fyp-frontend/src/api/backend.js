@@ -123,7 +123,8 @@ export async function bootstrapSession() {
 
   if (isTokenExpired(existingToken)) {
     localStorage.removeItem("token");
-    return await createAndStoreSession();
+    setSessionRestoreRequired("Your session expired. Restore it.");
+    throw new SessionExpiredError();
   }
 
   try {
@@ -133,7 +134,10 @@ export async function bootstrapSession() {
   } catch (err) {
     if (err.status === 401) {
       localStorage.removeItem("token");
-      return await createAndStoreSession();
+      setSessionRestoreRequired(
+        "Session invalid. Restore with your recovery code or start a new session."
+      );
+      throw new SessionExpiredError();
     }
     throw err;
   }
