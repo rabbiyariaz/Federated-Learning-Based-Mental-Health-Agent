@@ -64,7 +64,7 @@ export default function DashboardPage() {
 
 const { ema = [], phq = [], ema_summary = {} } = study || {};
 const formatDate = (d) => new Date(d).toLocaleDateString();
-
+const isHighVariability = ema_summary.mood_variability >= 3;
  
 
 
@@ -222,6 +222,18 @@ const getMoodVariabilityLabel = (value) => {
   return "High";
 };
 
+const getMoodVariabilityInsight = (value) => {
+  if (value == null) return "";
+
+  if (value < 1.5) {
+    return "mood is stable";
+  }
+  if (value < 3) {
+    return "moderate mood fluctuations";
+  }
+  return "significant mood fluctuations (monitor closely)";
+};
+
 const phqBarData = latestPhq
   ? {
       labels: previousPhq
@@ -297,7 +309,7 @@ const phqBarData = latestPhq
               Mood Tracking (Recent Trend)
             </h2>
             {moodData ? (
-              <div className="h-64">
+              <div className="h-72">
                 <Line data={moodData} options={lineOptions} />
               </div>
             ) : (
@@ -318,11 +330,11 @@ const phqBarData = latestPhq
               Interest & Pleasure (Recent Trend)
             </h2>
             {anhedoniaData ? (
-              <div className="h-64">
+              <div className="h-72">
                 <Line data={anhedoniaData} options={lineOptions} />
               </div>
             ) : (
-              <div className="h-64 flex items-center justify-center bg-gray-50 rounded">
+              <div className="h-72 flex items-center justify-center bg-gray-50 rounded">
                 <p className="text-gray-500 text-sm">
                   No anhedonia data available yet
                 </p>
@@ -339,11 +351,11 @@ const phqBarData = latestPhq
               Fatigue & Lack of energy (Recent Trend)
             </h2>
             {fatigueData ? (
-              <div className="h-64">
+              <div className="h-72">
                 <Line data={fatigueData} options={lineOptions} />
               </div>
             ) : (
-              <div className="h-64 flex items-center justify-center bg-gray-50 rounded">
+              <div className="h-72 flex items-center justify-center bg-gray-50 rounded">
                 <p className="text-gray-500 text-sm">
                   No fatigue data available yet
                 </p>
@@ -360,11 +372,11 @@ const phqBarData = latestPhq
               Self-Criticism (Recent Trend)
             </h2>
             {selfCriticismData ? (
-              <div className="h-64">
+              <div className="h-72">
                 <Line data={selfCriticismData} options={lineOptions} />
               </div>
             ) : (
-              <div className="h-64 flex items-center justify-center bg-gray-50 rounded">
+              <div className="h-72 flex items-center justify-center bg-gray-50 rounded">
                 <p className="text-gray-500 text-sm">
                   No self-criticism data available yet
                 </p>
@@ -382,7 +394,7 @@ const phqBarData = latestPhq
               Cognitive Symptoms  (Recent Trend)
             </h2>
             {cognitiveData ? (
-              <div className="h-64">
+              <div className="h-72">
                 <Line data={cognitiveData} options={lineOptions} />
               </div>
             ) : (
@@ -407,11 +419,11 @@ const phqBarData = latestPhq
               Sleep Quality (Recent Trend)
             </h2>
             {sleepData ? (
-              <div className="h-64">
+              <div className="h-72">
                 <Line data={sleepData} options={lineOptions} />
               </div>
             ) : (
-              <div className="h-64 flex items-center justify-center bg-gray-50 rounded">
+              <div className="h-72 flex items-center justify-center bg-gray-50 rounded">
                 <p className="text-gray-500 text-sm">
                   No sleep quality data available yet
                 </p>
@@ -487,7 +499,7 @@ const phqBarData = latestPhq
     <div>
       <p className="text-gray-600">Depressive Symptom Intensity (0-20 scale)</p>
       <p className="font-semibold text-gray-900 text-lg">
-        {ema_summary.weekly_avg_depression?.toFixed(2)} / 20
+        {Math.round(ema_summary.weekly_avg_depression)}
       </p>
       <p className="text-xs text-emerald-700 font-semibold mt-1">
         {getDepressionSeverityLabel(ema_summary.weekly_avg_depression)}
@@ -496,14 +508,26 @@ const phqBarData = latestPhq
 
     <div>
       <p className="text-gray-600">
-        Mood Variability ({ema.length} day{ema.length === 1 ? "" : "s"})
-      </p>
+Mood Variability ({ema.length} day{ema.length > 1 ? "s" : ""} , mood consistency)      </p>
       <p className="font-semibold text-gray-900 text-lg">
         {ema_summary.mood_variability?.toFixed(2)}
       </p>
-      <p className="text-xs text-emerald-700 font-semibold mt-1">
-        {getMoodVariabilityLabel(ema_summary.mood_variability)} variation
-      </p>
+
+      {ema.length < 2 ? (
+  <p className="text-xs text-gray-500 mt-1">
+    Need at least 2 entries to assess variability
+  </p>
+) : (
+  <p className={`text-xs font-semibold mt-1 ${
+  isHighVariability ? "text-red-600" : "text-emerald-700"
+}`}>
+    {getMoodVariabilityLabel(ema_summary.mood_variability)} variation — 
+    {getMoodVariabilityInsight(ema_summary.mood_variability)}
+
+  </p>
+  
+)}
+
     </div>
 
     <div>

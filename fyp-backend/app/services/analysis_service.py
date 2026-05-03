@@ -42,11 +42,13 @@ def compute_ema_summary(ema_entries):
     weekly_avg_anxiety = round(statistics.mean(anxiety_scores), 2)
     weekly_avg_sleep = round(statistics.mean(sleep_scores), 2)
 
-    # --- Mood Variability (standard deviation) ---
-    if len(depression_scores) > 1:
+# --- Mood Variability (standard deviation + reliability) ---
+    if len(depression_scores) >= 2:
         mood_variability = round(statistics.stdev(depression_scores), 2)
+        variability_reliability = "Low" if len(depression_scores) < 4 else "Reliable"
     else:
-        mood_variability = 0
+        mood_variability = None
+        variability_reliability = "Insufficient data"
 
     # --- Trend Detection (first half vs second half mean) ---
     if len(depression_scores) >= 4:
@@ -63,7 +65,7 @@ def compute_ema_summary(ema_entries):
         else:
             trend_dep = "Stable"
     else:
-        trend_dep = "Insufficient data"
+        trend_dep = "Not enough data yet (need at least 4 days)"
 
     # --- Sleep Trend ---
     if len(sleep_scores) >= 4:
@@ -87,26 +89,54 @@ def compute_ema_summary(ema_entries):
     adherence_percent = round(len(ema_entries) / expected_days * 100, 1)
 
     # --- Clinical Interpretation ---
-    if weekly_avg_depression >= 18:
-        severity = "High depressive symptom burden"
-    elif weekly_avg_depression >= 12:
-        severity = "Moderate depressive symptom burden"
-    elif weekly_avg_depression >= 7:
-        severity = "Mild depressive symptom burden"
+    if weekly_avg_depression >= 16:
+        severity = "High depression signal"
+    elif weekly_avg_depression >= 11:
+        severity = "Moderate depression signal"
+    elif weekly_avg_depression >= 6:
+        severity = "Mild depression signal"
     else:
-        severity = "Minimal depressive symptom burden"
+        severity = "Minimal depression signal"
+
+    # --- Variability interpretation ---
+    if mood_variability is None:
+        variability_text = "Mood variability could not be reliably estimated due to insufficient data."
+    else:
+        if mood_variability >= 3:
+            variability_level = "high variability"
+        elif mood_variability >= 1.5:
+            variability_level = "moderate variability"
+        else:
+            variability_level = "low variability"
+
+        confidence_text = (
+            "estimate is reliable"
+            if variability_reliability == "Reliable"
+            else "low confidence due to limited data"
+        )
+
+        variability_text = f"Mood variability is {variability_level} ({confidence_text})."
+
+    pattern_summary = ""
+
+    if mood_variability is not None and mood_variability >= 3 and trend_dep == "Worsening":
+        pattern_summary = " This pattern suggests increasing instability and symptom escalation."
+
 
     clinical_note = (
         f"Weekly Depressive Symptom Intensity is {weekly_avg_depression}, "
-        f"indicating {severity}. Mood variability is {mood_variability}. "
+         f"{variability_text}. "
         f"Depressive Symptom Trend {trend_dep.lower()}. "
         f"Average sleep was {weekly_avg_sleep}, with sleep trend {trend_sleep.lower()}."
     )
+    clinical_note += pattern_summary
+
 
     return {
         "weekly_avg_depression": weekly_avg_depression,
         "weekly_avg_anxiety": weekly_avg_anxiety,
         "weekly_avg_sleep": weekly_avg_sleep,
+        "variability_reliability": variability_reliability, 
         "mood_variability": mood_variability,
         "trend_depression": trend_dep,
         "trend_sleep": trend_sleep,

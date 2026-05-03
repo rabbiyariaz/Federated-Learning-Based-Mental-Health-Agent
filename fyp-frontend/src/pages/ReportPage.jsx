@@ -214,7 +214,7 @@ Generated on: ${new Date().toLocaleString()}
                 <p className="text-4xl font-bold text-gray-800">{baseline}</p>
                 <p className="text-xs text-gray-500 mt-1">out of 24</p>
                 <p className="text-sm font-semibold text-emerald-600 mt-2">
-                  {getPHQSeverityLabel(baseline)}
+                  {getPHQSeverityLabel(baseline)} Depression
                 </p>
               </div>
             ) : (
@@ -320,8 +320,39 @@ Generated on: ${new Date().toLocaleString()}
 
       <p>
         <strong className="text-gray-900">Depressive Symptom Trend :</strong>{" "}
-        {report.ema_summary.trend_depression}
+        {report.ema_summary.trend_depression === "Insufficient data"
+  ? "Not enough recent entries (minimum 4 required)"
+  : report.ema_summary.trend_depression}
       </p>
+
+<p>
+  <strong className="text-gray-900">Mood Variability:</strong>{" "}
+  {report.ema_summary.mood_variability !== null ? (
+    <>
+      {report.ema_summary.mood_variability.toFixed(2)}{" "}
+      
+      {/* Interpretation */}
+      <span className="text-sm text-gray-700">
+        — {report.ema_summary.mood_variability >= 3
+          ? "high variability"
+          : report.ema_summary.mood_variability >= 1.5
+          ? "moderate variability"
+          : "low variability"}
+      </span>
+
+      {/* Confidence (separate meaning) */}
+      <span className="text-sm text-gray-500 ml-1">
+        ({report.ema_summary.variability_reliability === "Reliable"
+          ? "estimate is reliable"
+          : "low confidence"})
+      </span>
+    </>
+  ) : (
+    <span className="text-gray-500 text-sm">
+      Not enough data (minimum 4 entries in last 7 days required)
+    </span>
+  )}
+</p>
 
       <p>
         <strong className="text-gray-900">Average Sleep (0-4 scale):</strong>{" "}
