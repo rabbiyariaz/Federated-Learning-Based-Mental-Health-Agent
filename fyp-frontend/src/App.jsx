@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './layout/MainLayout';
 import PHQPage from './pages/PHQPage';
 import EMAPage from './pages/EMAPage';
@@ -214,7 +214,7 @@ function App() {
         </div>
       )}
 
-      <BrowserRouter>
+      <HashRouter>
         <Routes>
           <Route path="/" element={<MainLayout />}>
             <Route index element={<HomePage />} />
@@ -230,7 +230,7 @@ function App() {
             <Route path="admin" element={<AdminDashboardPage />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+      </HashRouter>
     </>
   );
 }
