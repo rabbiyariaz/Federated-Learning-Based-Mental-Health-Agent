@@ -112,9 +112,10 @@ export async function analyzeText(text, moodData = null) {
 //   };
 // }
 
-const CHAT_API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000")
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000")
   .trim()
   .replace(/\/+$/, "");
+const CHAT_API_BASE = API_BASE_URL;
 
 export async function sendChatMessage(message, history = []) {
   const body = JSON.stringify({
@@ -215,7 +216,7 @@ export async function clearChatHistory() {
 
 
 export async function getFederatedMetrics() {
-  const res = await fetch("http://127.0.0.1:8000/api/federated/metrics");
+  const res = await fetch(`${API_BASE_URL}/api/federated/metrics`);
 
   if (!res.ok) {
     const txt = await res.text();
@@ -226,7 +227,7 @@ export async function getFederatedMetrics() {
 }
 
 export async function simulateFederatedRound() {
-  const res = await fetch("http://127.0.0.1:8000/api/federated/rounds/simulate", {
+  const res = await fetch(`${API_BASE_URL}/api/federated/rounds/simulate`, {
     method: "POST",
   });
 
@@ -238,7 +239,7 @@ export async function simulateFederatedRound() {
 }
 
 export async function resetFederatedSimulation() {
-  const res = await fetch("http://127.0.0.1:8000/api/federated/reset", {
+  const res = await fetch(`${API_BASE_URL}/api/federated/reset`, {
     method: "POST",
   });
 
