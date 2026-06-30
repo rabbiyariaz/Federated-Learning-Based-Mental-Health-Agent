@@ -66,8 +66,7 @@ The frontend provides the user experience for assessments, progress tracking, da
 
 The project is evaluated through functional workflows and report outputs rather than a single benchmark score. Core validation covers session creation, PHQ scoring, EMA submissions, text entry handling, weekly text risk generation, report generation, dashboard summaries, and the federated learning demo.
 
-The current test plan documents 70+ functional and integration cases across authentication, PHQ, EMA, text analysis, weekly aggregation, report generation, and end-to-end flows. See [docs/test_case_planning.md](docs/test_case_planning.md) and [docs/fyp_evaluation.md](docs/fyp_evaluation.md) for the detailed evaluation matrix, validation strategy, and discussion of strengths and limitations.
-
+The current test plan documents 70+ functional and integration cases across authentication, PHQ, EMA, text analysis, weekly aggregation, report generation, and end-to-end flows. See [docs/test_case_planning.md](docs/test_case_planning.md).
 ## 8. Tech Stack
 
 | Layer | Tools |
