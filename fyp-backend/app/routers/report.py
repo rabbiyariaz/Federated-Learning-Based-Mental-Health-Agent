@@ -1,7 +1,7 @@
 from datetime import timedelta, date
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.models import EMAEntry, PHQAssessment, TextEntry
+from app.models import EMAEntry, PHQAssessment
 from app.services.analysis_service import compute_ema_summary, compute_phq_trend
 from app.database import get_db
 from app.auth import verify_token
@@ -12,6 +12,11 @@ router = APIRouter(prefix="/report")
 
 # Initialize services (lazy loading)
 _weekly_service = None
+
+_EMPTY_PHQ_MESSAGE = (
+    "No PHQ data found yet. Complete a PHQ assessment to generate your report."
+)
+
 
 def get_weekly_service():
     """Lazy-load the weekly report service"""
@@ -26,7 +31,7 @@ def get_weekly_service():
 @router.get("")
 def generate_report(
     session_id: str = Depends(verify_token),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     # 1️⃣ Get PHQs ordered newest first
     phqs = (
@@ -37,7 +42,18 @@ def generate_report(
     )
 
     if not phqs:
-        raise HTTPException(404, "No PHQ data found")
+        return {
+            "hasData": False,
+            "message": _EMPTY_PHQ_MESSAGE,
+            "latest_phq": None,
+            "phq_history": [],
+            "phq_list": [],
+            "phq_progress": None,
+            "phq_trend": None,
+            "ema_summary": None,
+            "ema_days_completed": 0,
+            "text_risk": None,
+        }
 
     latest_phq = phqs[0]
 
@@ -52,7 +68,7 @@ def generate_report(
         .filter(
             EMAEntry.user_id == session_id,
             EMAEntry.date_submitted >= start_date,
-            EMAEntry.date_submitted <= end_date
+            EMAEntry.date_submitted <= end_date,
         )
         .order_by(EMAEntry.date_submitted)
         .all()
@@ -82,56 +98,55 @@ def generate_report(
                 "current_score": latest_phq.total_score,
                 "change": delta,
                 "status": status,
-                "days_between": gap_days
+                "days_between": gap_days,
             }
 
     # 4️⃣ PHQ Trend Analysis (across all valid PHQs ≥7 days apart)
     phq_trend = compute_phq_trend(phqs)
     print(len(ema_entries))
-    
+
+    phq_list = [
+        {"score": p.total_score, "submittedAt": p.submitted_at.isoformat()}
+        for p in phqs
+    ]
+
     return {
+        "hasData": True,
         "latest_phq": {
             "score": latest_phq.total_score,
-            "submittedAt": latest_phq.submitted_at.isoformat()
+            "submittedAt": latest_phq.submitted_at.isoformat(),
         },
         "phq_progress": phq_progress,
         "phq_trend": phq_trend,
         "ema_summary": ema_summary,
         "ema_days_completed": len(ema_entries),
-
-        "phq_list": [
-    {
-        "score": p.total_score,
-        "submittedAt": p.submitted_at.isoformat()
-    }
-    for p in phqs
-]
+        "phq_list": phq_list,
     }
 
 
 @router.get("/weekly-text-risk")
 def get_weekly_text_risk(
     session_id: str = Depends(verify_token),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Get weekly text risk assessment using LSTM aggregator.
-    
+
     Analyzes the user's text reflections from the last 7 days and returns
     one of three risk levels: Low, Moderate, or Elevated.
-    
+
     Returns:
         - weekly_risk_level: One of ["Low", "Moderate", "Elevated", "Insufficient Data", "No Data"]
         - reflection_count: Number of reflections analyzed
         - message: Descriptive message about the analysis
     """
     weekly_service = get_weekly_service()
-    
+
     try:
         result = weekly_service.generate_for_user(db, session_id)
         return result
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error generating weekly text risk report: {str(e)}"
+            detail=f"Error generating weekly text risk report: {str(e)}",
         )

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getFederatedMetrics } from '../utils/api';
+import { getFederatedMetrics, simulateFederatedRound, resetFederatedSimulation } from '../utils/api';
 import ClientNode from '../components/ClientNode';
 import RoundTimeline from '../components/RoundTimeline';
 import MetricsChart from '../components/MetricsChart';
@@ -19,6 +19,35 @@ function AdminDashboardPage() {
     } catch (err) {
       console.error('Error loading metrics:', err);
       setError('Failed to load federated learning metrics.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSimulateRound = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const data = await simulateFederatedRound();
+      setMetrics(data);
+    } catch {
+      setError('Failed to simulate federated learning round.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetSimulation = async () => {
+    if (!window.confirm('Reset the federated learning simulation?')) {
+      return;
+    }
+    try {
+      setIsLoading(true);
+      setError(null);
+      const data = await resetFederatedSimulation();
+      setMetrics(data.metrics);
+    } catch {
+      setError('Failed to reset federated learning simulation.');
     } finally {
       setIsLoading(false);
     }
@@ -103,11 +132,18 @@ function AdminDashboardPage() {
       <div className="mb-8 flex justify-between items-start">
         <div>
           <h1 className="text-3xl font-bold text-emerald-400 mb-2">Federated Learning Dashboard</h1>
-          <p className="text-slate-300">
-            Monitor federated learning clients, training rounds, and model metrics
-          </p>
+          <div className="max-w-3xl space-y-2 text-sm text-slate-300 leading-relaxed">
+            <p>
+              This dashboard monitors <span className="text-slate-200">simulated federated training</span> in the
+              backend demo—rounds, client participation, and global model aggregates.
+            </p>
+            <p className="text-slate-400">
+              GoEmotions data is split across virtual clients. Raw client text is not shared or transmitted;
+              only high-level metrics are exposed here.
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4 justify-end">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -118,11 +154,28 @@ function AdminDashboardPage() {
             <span className="text-sm text-slate-300">Auto-refresh</span>
           </label>
           <button
+            type="button"
             onClick={loadMetrics}
             disabled={isLoading}
             className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"
           >
             {isLoading ? 'Refreshing...' : 'Refresh'}
+          </button>
+          <button
+            type="button"
+            onClick={handleSimulateRound}
+            disabled={isLoading}
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"
+          >
+            Simulate Round
+          </button>
+          <button
+            type="button"
+            onClick={handleResetSimulation}
+            disabled={isLoading}
+            className="bg-red-600 hover:bg-red-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"
+          >
+            Reset
           </button>
         </div>
       </div>
@@ -159,7 +212,11 @@ function AdminDashboardPage() {
                 <div className="text-slate-200 font-semibold">{metrics.globalModel.modelVersion}</div>
               </div>
             </div>
-            <div className="mt-4 text-sm text-slate-400">
+            <p className="mt-4 text-xs text-slate-500 leading-relaxed border-t border-slate-700 pt-4">
+              Metrics are validation metrics from the lightweight FL demo model. Accuracy is exact-match accuracy,
+              while F1 is more meaningful for multi-label emotion classification.
+            </p>
+            <div className="mt-3 text-sm text-slate-400">
               Last aggregated: {formatTime(metrics.globalModel.aggregatedAt)}
             </div>
           </div>

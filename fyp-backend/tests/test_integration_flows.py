@@ -61,13 +61,21 @@ def test_ema_then_study_summary_flow(client, auth_context):
     assert len(data["ema"]) >= 1
 
 
-def test_study_summary_404_no_data(client, auth_context):
+def test_study_summary_empty_ok(client, auth_context):
     res = client.get("/api/study/summary", headers=auth_context["headers"])
-    assert res.status_code == 404
+    assert res.status_code == 200
+    data = res.json()
+    assert data.get("hasData") is False
+    assert data.get("phq") == []
+    assert data.get("ema") == []
 
 
-def test_report_404_no_phq(client, auth_context):
+def test_report_empty_no_phq(client, auth_context):
     res = client.get("/report", headers=auth_context["headers"])
-    assert res.status_code == 404
+    assert res.status_code == 200
+    data = res.json()
+    assert data.get("hasData") is False
+    assert data.get("latest_phq") is None
+    assert data.get("phq_list") == []
 
 

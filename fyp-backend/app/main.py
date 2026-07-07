@@ -3,8 +3,15 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from ml.inference.inference_engine import InferenceService
-from app.routers import ema, phq, report, study, session, text_entry
+from app.routers import ema, phq, report, study, session, text_entry, federated
 
+from app.database import Base, engine
+import app.models  # noqa: F401 - register ORM models on Base.metadata
+
+Base.metadata.create_all(bind=engine)
+
+from dotenv import load_dotenv
+load_dotenv()
 
 
 
@@ -12,9 +19,13 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
-    
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -57,5 +68,6 @@ app.include_router(report.router)
 app.include_router(study.router)
 app.include_router(session.router)
 app.include_router(text_entry.router)
+app.include_router(federated.router)
 
 

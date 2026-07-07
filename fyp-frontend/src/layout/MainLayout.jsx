@@ -99,6 +99,16 @@ function MainLayout() {
               >
                 Chat
               </Link>
+              <Link
+                to="/admin"
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  isActive('/admin')
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-gray-700 hover:bg-emerald-50 hover:text-emerald-700'
+                }`}
+              >
+                FL Dashboard
+              </Link>
             </div>
           </div>
         </div>

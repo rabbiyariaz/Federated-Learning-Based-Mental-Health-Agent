@@ -1,5 +1,5 @@
 /**
- * MetricsChart component - Simple visualization of loss and accuracy over rounds
+ * MetricsChart component - Simple visualization of loss, accuracy, and F1 over rounds
  * @param {Array} rounds - Array of round objects
  */
 function MetricsChart({ rounds }) {
@@ -16,6 +16,9 @@ function MetricsChart({ rounds }) {
   const minLoss = Math.min(...rounds.map(r => r.loss));
   const maxAcc = Math.max(...rounds.map(r => r.accuracy));
   const minAcc = Math.min(...rounds.map(r => r.accuracy));
+  const f1Values = rounds.map(r => (r.f1 == null ? 0 : r.f1));
+  const maxF1 = Math.max(...f1Values);
+  const minF1 = Math.min(...f1Values);
 
   const chartHeight = 200;
   const chartWidth = 100;
@@ -31,6 +34,12 @@ function MetricsChart({ rounds }) {
     const range = maxAcc - minAcc;
     if (range === 0) return padding;
     return padding + ((maxAcc - acc) / range) * (chartHeight - 2 * padding);
+  };
+
+  const getF1Y = (f1) => {
+    const range = maxF1 - minF1;
+    if (range === 0) return padding;
+    return padding + ((maxF1 - f1) / range) * (chartHeight - 2 * padding);
   };
 
   const getX = (index) => {
@@ -51,6 +60,16 @@ function MetricsChart({ rounds }) {
     .map((round, index) => {
       const x = getX(index);
       const y = getAccY(round.accuracy);
+      return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+    })
+    .join(' ');
+
+  // Generate path for F1 line
+  const f1Path = rounds
+    .map((round, index) => {
+      const x = getX(index);
+      const f1 = round.f1 == null ? 0 : round.f1;
+      const y = getF1Y(f1);
       return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
     })
     .join(' ');
@@ -102,6 +121,16 @@ function MetricsChart({ rounds }) {
             strokeLinejoin="round"
           />
 
+          {/* F1 line */}
+          <path
+            d={f1Path}
+            fill="none"
+            stroke="#3b82f6"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
           {/* Data points for loss */}
           {rounds.map((round, index) => {
             const x = getX(index);
@@ -131,6 +160,22 @@ function MetricsChart({ rounds }) {
               />
             );
           })}
+
+          {/* Data points for F1 */}
+          {rounds.map((round, index) => {
+            const x = getX(index);
+            const f1 = round.f1 == null ? 0 : round.f1;
+            const y = getF1Y(f1);
+            return (
+              <circle
+                key={`f1-${index}`}
+                cx={x}
+                cy={y}
+                r="2"
+                fill="#3b82f6"
+              />
+            );
+          })}
         </svg>
 
         {/* Legend */}
@@ -149,6 +194,13 @@ function MetricsChart({ rounds }) {
               ({(minAcc * 100).toFixed(1)}% - {(maxAcc * 100).toFixed(1)}%)
             </span>
           </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-0.5" style={{ backgroundColor: '#3b82f6' }}></div>
+            <span className="text-slate-300">F1</span>
+            <span className="text-slate-500">
+              ({(minF1 * 100).toFixed(1)}% - {(maxF1 * 100).toFixed(1)}%)
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -156,4 +208,3 @@ function MetricsChart({ rounds }) {
 }
 
 export default MetricsChart;
-
